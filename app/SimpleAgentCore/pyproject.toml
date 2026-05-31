@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simple-agent-core"
+version = "0.1.0"
+description = "Minimal AWS Bedrock AgentCore chatbot using Claude Agent SDK on Amazon Bedrock."
+requires-python = ">=3.10"
+dependencies = [
+    "bedrock-agentcore>=1.12.0,<2",
+    "claude-agent-sdk>=0.2.87,<0.3",
+    "python-dotenv>=1.0.1,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+]
+
+[tool.setuptools]
+py-modules = ["chatbot", "main", "local_chat"]
+
+[tool.pytest.ini_options]
+testpaths = ["../../tests"]
+pythonpath = ["."]

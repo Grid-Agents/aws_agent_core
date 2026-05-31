@@ -1,0 +1,17 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+*.egg-info/
+agentcore/.cli/
+agentcore/cdk.out/
+agentcore/aws-targets.json
+agentcore/cdk/node_modules/
+agentcore/cdk/dist/
+agentcore/cdk/coverage/
+.cache/
+cdk/

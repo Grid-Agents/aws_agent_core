@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "SimpleAgentCore",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "codex",
+    "agentcore:project-name": "SimpleAgentCore"
+  },
+  "runtimes": [
+    {
+      "name": "SimpleAgentCore",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/SimpleAgentCore/",
+      "runtimeVersion": "PYTHON_3_14",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP",
+      "instrumentation": {
+        "enableOtel": false
+      },
+      "envVars": [
+        {
+          "name": "AWS_REGION",
+          "value": "us-west-2"
+        },
+        {
+          "name": "CLAUDE_CODE_USE_BEDROCK",
+          "value": "1"
+        },
+        {
+          "name": "ANTHROPIC_MODEL",
+          "value": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        },
+        {
+          "name": "AGENT_SYSTEM_PROMPT",
+          "value": "You are a concise, helpful chatbot. Answer directly and ask clarifying questions when needed."
+        }
+      ]
+    }
+  ],
+  "memories": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "httpGateways": [],
+  "harnesses": [],
+  "datasets": []
+}
