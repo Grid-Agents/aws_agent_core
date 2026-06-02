@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grid-agent-core"
+version = "0.1.0"
+description = "AWS Bedrock AgentCore Grid document agent using Claude Agent SDK."
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.64.0,<1",
+    "bedrock-agentcore>=1.12.0,<2",
+    "boto3>=1.34,<2",
+    "claude-agent-sdk>=0.2.87,<0.3",
+    "fastapi>=0.115,<1",
+    "llama-cloud>=1.4.1,<2",
+    "pandas>=2.2,<3",
+    "pyarrow>=16,<23",
+    "pymupdf>=1.24,<2",
+    "pypdf>=4,<7",
+    "python-dotenv>=1.0.1,<2",
+    "uvicorn[standard]>=0.34,<1",
+    "voyageai>=0.3.7,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.27,<1",
+    "pytest>=8.0,<9",
+]
+graphrag = [
+    "graphrag>=2.7,<4",
+]
+
+[project.scripts]
+grid-parse-documents = "grid_agent_core.corpus:main"
+grid-build-indexes = "grid_agent_core.build_indexes:main"
+grid-upload-artifacts = "grid_agent_core.upload_artifacts:main"
+grid-local-api = "grid_agent_core.local_api:main"
+
+[tool.setuptools]
+packages = ["grid_agent_core", "grid_agent_core.graphrag"]
+py-modules = ["main", "local_chat"]
+
+[tool.pytest.ini_options]
+testpaths = ["../../tests/grid_agent_core"]
+pythonpath = ["."]
