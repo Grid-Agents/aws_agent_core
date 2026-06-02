@@ -15,3 +15,9 @@ agentcore/cdk/dist/
 agentcore/cdk/coverage/
 .cache/
 cdk/
+.grid_artifacts/
+app/GridAgentCore/.venv/
+app/GridAgentCore/*.egg-info/
+app/GridAgentCore/frontend/node_modules/
+app/GridAgentCore/frontend/dist/
+app/GridAgentCore/frontend/coverage/

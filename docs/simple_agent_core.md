@@ -6,6 +6,12 @@ Create a minimal demo that uses Claude Agent SDK with a Claude Sonnet model and 
 
 The app can be a simple chatbot that accepts a user prompt and returns a Claude-generated response.
 
+## Status
+
+Completed baseline. Keep this document as the reference for the simple chatbot
+demo. Plan the next Grid document retrieval implementation in
+`docs/grid_agents.md` rather than expanding this file.
+
 ## Target Architecture
 
 ```text

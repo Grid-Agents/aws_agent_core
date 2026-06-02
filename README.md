@@ -1,399 +1,376 @@
-# Simple AgentCore Chatbot
+# Grid AgentCore
 
-Minimal AWS Bedrock AgentCore application that runs a simple chatbot agent with Claude Agent SDK and a Claude Sonnet model on Amazon Bedrock.
+AWS Bedrock AgentCore application for asking cited questions over Grid documents. The repo keeps the completed `app/SimpleAgentCore/` chatbot baseline and adds `app/GridAgentCore/` for Grid document retrieval, Claude Agent SDK tools/subagents, S3 artifact deployment, and a React trajectory UI.
 
 ## What It Does
 
-The app accepts a `prompt`, sends it through Claude Agent SDK, routes Claude model calls to Amazon Bedrock, and returns a text response. It intentionally has no tools, memory, RAG, or external integrations.
+`GridAgentCore` parses the PDFs in `/Users/maoxunhuang/Desktop/GridAgents/Grid Docs`, writes a text/Markdown corpus and manifest, builds retrieval artifacts, uploads runtime artifacts to S3, and runs a Claude Agent SDK root agent on AgentCore Runtime. The agent can use vector, PageIndex, GraphRAG, exact-find, `inspect_evidence`, `cite_evidence`, and optional `span-retriever` subagents. Responses include a cited answer plus observable events: root-agent text, tool calls, retrieval results, subagent calls, selected citations, latency, metadata, and errors.
+
+The app does not expose hidden model chain-of-thought.
 
 ## Design
 
 ```text
-User / CLI / API
-  -> AWS Bedrock AgentCore Runtime
-  -> app/SimpleAgentCore/main.py
-  -> Claude Agent SDK
+User / Frontend / CLI
+  -> local API or AWS Bedrock AgentCore Runtime
+  -> app/GridAgentCore/main.py
+  -> Claude Agent SDK root agent
+  -> MCP retrieval tools and optional span-retriever subagents
+  -> Grid parsed corpus, exact-find, and vector/PageIndex/GraphRAG indexes
   -> Claude Sonnet on Amazon Bedrock
-  -> response returned to user
+  -> streamed trace events plus cited result
 ```
 
-## Files
+## Main Files
 
-- `app/SimpleAgentCore/main.py` - AgentCore Runtime entrypoint.
-- `app/SimpleAgentCore/chatbot.py` - Claude Agent SDK wrapper.
-- `app/SimpleAgentCore/local_chat.py` - direct local CLI invocation.
-- `app/SimpleAgentCore/pyproject.toml` - Python dependencies for local `uv` and AgentCore packaging.
-- `agentcore/agentcore.json` - AgentCore CLI project/runtime config.
-- `agentcore/aws-targets.example.json` - template for account/region deployment target.
-- `agentcore/cdk/` - generated CDK app used by `agentcore deploy`.
-- `.env.example` - local environment template without real secrets.
-- `tests/test_chatbot.py` - local validation for prompt/response handling.
+- `app/GridAgentCore/main.py` - AgentCore streaming entrypoint.
+- `app/GridAgentCore/grid_agent_core/corpus.py` - Grid PDF parsing, text corpus, manifest, page offsets, content hashes.
+- `app/GridAgentCore/grid_agent_core/llama_parse_agentic.py` - ParseBench-compatible LlamaParse Agentic parser wrapper.
+- `app/GridAgentCore/grid_agent_core/indexes.py` - vector, PageIndex, and GraphRAG index builders over the parsed corpus.
+- `app/GridAgentCore/grid_agent_core/retrieval.py` - retrieval repository over parsed Grid text and optional figure metadata.
+- `app/GridAgentCore/grid_agent_core/agent.py` - Claude Agent SDK session, retrieval tool responses, citations, `enable_subagents` payload knob.
+- `app/GridAgentCore/grid_agent_core/local_api.py` - FastAPI NDJSON proxy for the frontend.
+- `app/GridAgentCore/frontend/` - Vite React Grid QA UI.
+- `agentcore/agentcore.json` - active AgentCore deployment target for `GridAgentCore`.
+- `app/SimpleAgentCore/` - preserved minimal chatbot baseline.
 
-## Prerequisites
+Generated artifacts live under `.grid_artifacts/` by default and are ignored by git.
 
-- Python 3.10 or later.
-- `uv` for Python dependency management.
-- Node.js 20 or later and npm for the AWS AgentCore CLI.
-- AWS CLI v2 for credentials, account lookup, and Bedrock access checks.
-- AWS credentials through either `AWS_PROFILE`, explicit AWS environment variables, SSO, or an AgentCore execution role.
-- Amazon Bedrock model access enabled for the selected Anthropic Claude Sonnet model in your AWS region.
-- IAM permissions to deploy AgentCore Runtime resources with the AgentCore CLI/CDK, plus runtime permission to call the selected Bedrock model.
-
-Install `uv` if needed:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv --version
-```
-
-Install the AgentCore CLI if needed:
-
-```bash
-npm install -g @aws/agentcore
-agentcore --version
-```
-
-## Setup With uv
-
-From the repository root:
+## Setup
 
 ```bash
 deactivate 2>/dev/null || true
 unset VIRTUAL_ENV
-cd app/SimpleAgentCore
-uv sync --extra dev
-cd ../..
-npm install --prefix agentcore/cdk
 cp .env.example .env
+cd app/GridAgentCore
+uv sync --extra dev
+cd frontend
+npm install
+cd ../../..
+npm install --prefix agentcore/cdk
 ```
 
-Do not activate a separate `.venv` manually when using this project. `uv` creates and uses `app/SimpleAgentCore/.venv` automatically. If you see a warning like `VIRTUAL_ENV=... does not match the project environment path .venv`, your shell still has another virtual environment active; run `deactivate 2>/dev/null || true` and `unset VIRTUAL_ENV`, then rerun the `uv` command.
-
-Edit `.env` for your account and region:
+Edit `.env`:
 
 ```bash
 AWS_REGION=us-west-2
 AWS_PROFILE=default
 CLAUDE_CODE_USE_BEDROCK=1
 ANTHROPIC_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0
+GRID_ARTIFACT_DIR=.grid_artifacts
+GRID_S3_BUCKET=your-grid-agent-artifact-bucket
+GRID_S3_PREFIX=grid-agent-core
+LLAMA_CLOUD_API_KEY=your-llamaparse-key-for-agentic-parsing
+LLAMAPARSE_MAX_PAGES_PER_JOB=50
+LLAMAPARSE_TIMEOUT_SECONDS=600
+GRID_PARSE_DOCUMENT_CONCURRENCY=4
+GRID_MULTIMODAL_ENRICH=0
+GRID_VLM_RENDER_DPI=150
+GRID_VLM_CONCURRENCY=4
+GRID_VLM_MAX_RETRIES=3
+GRID_VLM_RETRY_BASE_SECONDS=2
+ANTHROPIC_API_KEY=your-anthropic-key-for-vlm-and-batch-indexing
 ```
 
-If that Sonnet model ID is not enabled in your region/account, replace `ANTHROPIC_MODEL` with an enabled Claude Sonnet Bedrock model or inference profile ID.
+Use `ANTHROPIC_API_KEY` for post-parse VLM enrichment and local index-time Message Batches. Runtime Claude calls use Bedrock IAM through Claude Agent SDK.
 
-Check AWS identity and model access:
+## Parse Grid Documents
+
+All retrieval indexes (vector, PageIndex, GraphRAG, exact-find) operate on parsed Markdown/text spans. The LlamaParse Agentic implementation intentionally matches the `doc-parser-eval` / ParseBench `llamaparse_agentic` pipeline by default: it keeps parser-produced Markdown, including any image references LlamaParse emits, but does not request or save separate image crops.
+
+For native multimodal RAG, add `--multimodal-enrich` after parsing. This is a separate VLM enrichment/materialization stage: each parsed page is rendered to a high-resolution JPEG, an Anthropic vision model decides whether the page has material visual content, the VLM description is inserted at the same page position in the parsed Markdown, and the image is saved as a `FigureRecord` artifact for the target agent.
+
+### Parsed Corpus
+
+- **`corpus/grid/*.txt`** — one file per document, concatenated parsed Markdown/text with `[Page N]` markers. If LlamaParse emits Markdown image references such as `![...](page_1_image_1_v2.jpg)`, they remain in this text exactly as parser output. With `--multimodal-enrich`, the file also contains `### Visual context - page N` blocks and local Markdown links such as `![Page N visual context](figures/grid/.../page-000N-visual.jpg)`.
+- **`manifest.jsonl`** — one record per document with source/corpus hashes, page spans, paths, and optional `figures`. In default ParseBench-compatible LlamaParse mode, `figures` is expected to be empty. With `--multimodal-enrich`, each saved visual artifact is recorded with page, description, local path, SHA-256, content type, size, and text span.
+- **`figures/grid/**/*.jpg`** — only present when multimodal enrichment is enabled and the VLM returns material visual context for a page.
+
+The parsed Markdown is useful for text-only retrieval because the VLM description is searchable text. The saved `FigureRecord` image lets the target agent attach the actual image bytes to the model context when cited evidence includes that page.
+
+### LlamaParse Agentic Contract
+
+With `--parser llamaparse-agentic`, the parser matches `doc-parser-eval`'s ParseBench pipeline:
+
+- `tier="agentic"`
+- `version="latest"`
+- `disable_cache=True`
+- `get(..., expand=["items", "text", "metadata", "debug_logs"])`
+- no `output_options`
+- no `images_content_metadata` expansion
+- no local image download/materialization
+
+`--multimodal-enrich` does not change the LlamaParse request. It runs after the ParseBench-compatible parse, using the original PDF pages and direct Anthropic API VLM output to add descriptions and saved image artifacts.
+
+Parsing is a separate stage. Before parser calls begin, it scans the source PDFs and writes page-count/size metadata to `source_document_metadata.json`. It then writes copied raw PDFs under `raw/`, parsed corpus files under `corpus/grid/*.txt`, parser resume cache files under `parse_resume_cache/`, `manifest.jsonl`, `artifact_revision.txt`, and `parse_metadata.json`:
 
 ```bash
 set -a
 source .env
 set +a
-aws sts get-caller-identity
-aws bedrock list-foundation-models --region "$AWS_REGION" --by-provider Anthropic
+cd app/GridAgentCore
+uv run grid-parse-documents \
+  --source-dir "/Users/maoxunhuang/Desktop/GridAgents/Grid Docs" \
+  --artifact-dir ../../.grid_artifacts \
+  --parser llamaparse-agentic \
+  --multimodal-enrich \
+  --force
 ```
 
-## Claude Agent SDK Settings
+`--parser llamaparse-agentic` requires `LLAMA_CLOUD_API_KEY`. `--multimodal-enrich` requires `ANTHROPIC_API_KEY`; `GRID_VLM_MODEL`, when set, must be an Anthropic API model ID. If `GRID_VLM_MODEL` is unset, the parser translates Bedrock-style `ANTHROPIC_MODEL` values such as `us.anthropic.claude-sonnet-4-5-20250929-v1:0` into the corresponding direct Anthropic model ID. Use `--parser pypdf` for the local no-API fallback.
 
-This project uses Claude Agent SDK through its Claude Code Bedrock provider. These are the important settings:
-
-- `CLAUDE_CODE_USE_BEDROCK=1` - required. Tells Claude Agent SDK/Claude Code to use Amazon Bedrock instead of Anthropic direct API auth.
-- `AWS_REGION` - required for Bedrock-backed Claude Agent SDK calls. Use the same region where the Anthropic model is enabled.
-- `ANTHROPIC_MODEL` - required for predictable demos. Use a Bedrock Claude Sonnet model ID or inference profile ID.
-- `AWS_PROFILE` or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` - required locally so Bedrock can authenticate the model call.
-- `AGENT_SYSTEM_PROMPT` - optional app setting used by `chatbot.py`; this is not a Claude Agent SDK provider setting.
-
-You do not set `ANTHROPIC_API_KEY` for this project because the model call goes through Amazon Bedrock. Bedrock authenticates with AWS IAM credentials and bills through AWS.
-
-## AWS Credentials
-
-There is no committed secret key because secrets must not live in source control. You still need credentials locally; choose one method.
-
-Profile-based credentials:
+Before a full LlamaParse run, use the smoke flag to parse only the first few
+pages of `02 - Industry Codes/00_The_Full_Grid_Code.pdf` and inspect the
+parsed-text preview plus Markdown image-reference count. This defaults to pages `1-8` and writes to
+`../../.grid_smoke_artifacts` so it does not overwrite the full corpus artifacts:
 
 ```bash
-aws configure sso --profile default
-aws sso login --profile default
+cd app/GridAgentCore
+uv run grid-parse-documents \
+  --source-dir "/Users/maoxunhuang/Desktop/GridAgents/Grid Docs" \
+  --smoke-full-grid-code \
+  --smoke-page-range 1-8 \
+  --multimodal-enrich \
+  --no-resume
 ```
 
-Then use this in `.env`:
+Parsing shows progress by default. Completed documents are resumable: re-running the command with `--force` rebuilds the manifest but reuses matching parsed text, raw PDF copies, and parser resume cache files. Use `--no-resume` only when you intentionally want to reparse every PDF. LlamaParse agentic jobs are automatically partitioned when a PDF is larger than `LLAMAPARSE_MAX_PAGES_PER_JOB` pages, so a 1102-page PDF is submitted as multiple smaller jobs and merged back with original page numbers. Completed partition payloads are cached under `parse_resume_cache/llamaparse_agentic/grid/*.partition_cache/`. Older `parse/` caches are migrated automatically on the next parse run.
+
+Document parsing runs up to `GRID_PARSE_DOCUMENT_CONCURRENCY` PDFs in parallel by default. When `--multimodal-enrich` is enabled, `GRID_VLM_CONCURRENCY` is a run-wide cap on page-level Anthropic VLM calls, not a per-document multiplier. The post-parse VLM phase shows document/page progress, writes per-page decisions under `parse_resume_cache/llamaparse_agentic/grid/*.visual_cache/`, and preserves page order when aggregating parallel results. This cache includes both saved visual pages and pages where the VLM decided there was no material visual content, so interrupted runs can resume without repeating completed Anthropic VLM calls. Anthropic rate limits/timeouts are retried with exponential backoff controlled by `GRID_VLM_MAX_RETRIES` and `GRID_VLM_RETRY_BASE_SECONDS`. If Anthropic rate-limits the run, reduce `--vlm-concurrency`.
+
+Pressing Ctrl+C cancels queued document/page work and exits the CLI with status `130`. Python cannot gracefully interrupt an already in-flight API request inside a worker thread, so the CLI uses an immediate process exit after flushing the interruption message to avoid leaving background requests running.
+
+Older LlamaParse cache entries that used image extraction or Markdown/image metadata expansions are invalidated once because they do not match the ParseBench-compatible parser contract. After a compatible parse completes, subsequent `--force` runs can resume from the new sidecars as long as the source PDF hash, parsed text, raw PDF copy, raw parse payload, multimodal-enrichment flag, and saved figure hashes still match.
+
+## Retrieval Behavior
+
+Retrieval is text-first. All indexes search against the parsed Markdown/text corpus.
+
+### Step 1 - Text Retrieval
+
+Vector, PageIndex, GraphRAG, and exact-find all return evidence hits as `(start_char, end_char, page)` spans over a document's `.txt` corpus file.
+
+### Step 2 - Evidence Response
+
+The MCP retrieval tools build text evidence blocks with document title, page range, evidence ID, retrieved passage text, and any attached `FigureRecord` entries whose page/span overlaps the evidence.
+
+### Multimodal Note
+
+The default ParseBench-compatible LlamaParse path has no native image content blocks because no local image artifacts are saved. With `--multimodal-enrich`, the VLM description is embedded in the parsed Markdown and the saved JPEG is attached to matching evidence. The target agent can then include both searchable visual text and the actual image block in the model context.
+
+## Build Grid Indexes
+
+Indexing is the second stage and consumes the parsed corpus from `--artifact-dir`. It does not parse PDFs and does not need `--source-dir`.
+
+Build the vector index:
 
 ```bash
-AWS_PROFILE=default
-AWS_REGION=us-west-2
+cd app/GridAgentCore
+uv run grid-build-indexes \
+  --artifact-dir ../../.grid_artifacts \
+  --methods vector \
+  --vector-provider voyage
 ```
 
-Explicit temporary credentials:
+Use `--vector-provider local` for a deterministic no-API fallback during development.
+
+Index builds show progress by default, cache per-document parts under `indexes/*/parts/`, and skip final indexes that already match the current `artifact_revision.txt`. If a run stops midway, rerun the same command to continue from completed parts. Use `--rebuild-indexes` to rebuild final vector/PageIndex outputs, and `--no-resume` only when you want to ignore cached per-document index parts. The hidden compatibility flag `--force` is treated as `--rebuild-indexes` during indexing.
+
+Build PageIndex. Enable Anthropic direct Message Batches to reduce summary cost:
 
 ```bash
-AWS_REGION=us-west-2
-AWS_ACCESS_KEY_ID=replace-with-access-key-id
-AWS_SECRET_ACCESS_KEY=replace-with-secret-access-key
-AWS_SESSION_TOKEN=replace-with-session-token-if-needed
+uv run grid-build-indexes \
+  --artifact-dir ../../.grid_artifacts \
+  --methods pageindex \
+  --anthropic-batch
 ```
 
-For deployed AgentCore Runtime, do not ship local credentials. The runtime should use its AWS execution role. That role needs only the Bedrock invoke permissions for the configured Claude Sonnet model.
-
-## AgentCore Config Guide
-
-AgentCore deployment uses two local config files:
-
-- `agentcore/agentcore.json` - committed project/runtime definition.
-- `agentcore/aws-targets.json` - local account/region target. This is ignored by git because it is account-specific.
-
-It also uses `agentcore/cdk/`, a generated CDK project required by `agentcore deploy`. Do not delete it. If it is missing, deployment fails with `CDK project not found at .../agentcore/cdk`.
-
-Create `agentcore/aws-targets.json`:
+GraphRAG uses a local copy of the Microsoft GraphRAG worker under
+`grid_agent_core/graphrag/`. Install the optional build-time dependencies in
+this project before indexing:
 
 ```bash
-cp agentcore/aws-targets.example.json agentcore/aws-targets.json
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore
+uv sync --extra dev --extra graphrag
+uv run grid-build-indexes \
+  --artifact-dir ../../.grid_artifacts \
+  --methods graphrag
 ```
 
-Fill it with your AWS account and deployment region:
+Do not include `find` in index builds. Exact-find is keyword search over the parsed corpus at retrieval time and has no index artifact.
 
-```json
-[
-  {
-    "name": "default",
-    "description": "Default deployment target for SimpleAgentCore",
-    "account": "123456789012",
-    "region": "us-west-2"
-  }
-]
-```
+If GraphRAG dependencies or API keys are missing, the script reports the missing
+project-local dependency instead of silently skipping it.
 
-Get the account value from AWS:
+## Upload Raw Documents And Artifacts To AWS
+
+Create the S3 bucket once, then upload the ignored local artifacts:
 
 ```bash
-aws sts get-caller-identity --query Account --output text
+set -a
+source .env
+set +a
+aws s3 mb "s3://$GRID_S3_BUCKET" --region "$AWS_REGION"
+cd app/GridAgentCore
+uv run grid-upload-artifacts \
+  --artifact-dir ../../.grid_artifacts \
+  --bucket "$GRID_S3_BUCKET" \
+  --prefix "$GRID_S3_PREFIX"
 ```
 
-Use the same region as `AWS_REGION` unless you intentionally deploy AgentCore and Bedrock model access in another supported region.
-
-`agentcore/agentcore.json` fields:
-
-- `$schema` - AgentCore JSON schema URL used by editor tooling and validation.
-- `name` - AgentCore project name. Keep `SimpleAgentCore` unless you want a different deployed project name.
-- `version` - config schema version. Keep `1`.
-- `managedBy` - `CDK`; the AgentCore CLI deploys infrastructure through CDK.
-- `tags` - AWS tags applied by the project. Safe to edit for ownership/cost tracking.
-- `runtimes[0].name` - runtime agent name shown in AgentCore.
-- `runtimes[0].build` - `CodeZip`; packages the Python app directory as source. Use `Container` only if you add system dependencies.
-- `runtimes[0].entrypoint` - `main.py`; resolved inside `codeLocation`.
-- `runtimes[0].codeLocation` - `app/SimpleAgentCore/`; must contain `main.py` and `pyproject.toml`.
-- `runtimes[0].runtimeVersion` - AWS runtime Python version. This project uses `PYTHON_3_14`.
-- `runtimes[0].networkMode` - `PUBLIC`; simplest demo networking. Change only if you are ready to configure VPC networking.
-- `runtimes[0].protocol` - `HTTP`; `main.py` exposes the AgentCore HTTP invocation handler.
-- `runtimes[0].instrumentation.enableOtel` - `false` for this minimal CodeZip demo, so AgentCore starts `main.py` directly without requiring OpenTelemetry packages in the ZIP.
-- `runtimes[0].envVars` - non-secret runtime environment values deployed with AgentCore. This project sets `AWS_REGION`, `CLAUDE_CODE_USE_BEDROCK`, `ANTHROPIC_MODEL`, and `AGENT_SYSTEM_PROMPT` here so the deployed runtime can call Bedrock without a local `.env` file.
-- `memories`, `credentials`, `evaluators`, `onlineEvalConfigs`, `agentCoreGateways`, `policyEngines`, `configBundles`, `abTests`, `httpGateways`, `harnesses`, `datasets` - intentionally empty for this minimal chatbot.
-
-Before deploying, confirm these match:
-
-```bash
-grep -E '^(AWS_REGION|AWS_PROFILE|CLAUDE_CODE_USE_BEDROCK|ANTHROPIC_MODEL)=' .env
-python3 -m json.tool agentcore/aws-targets.json
-python3 -m json.tool agentcore/agentcore.json
-npm install --prefix agentcore/cdk
-agentcore validate
-```
-
-The important consistency checks are:
-
-- `.env` `AWS_REGION` equals the `region` value for the `default` entry in `agentcore/aws-targets.json`.
-- `.env` `ANTHROPIC_MODEL` is available in that region/account.
-- `agentcore/agentcore.json` `codeLocation` points to `app/SimpleAgentCore/`.
-- `entrypoint` is `main.py`.
-- `runtimes[0].envVars` has the same `AWS_REGION`, `CLAUDE_CODE_USE_BEDROCK`, and `ANTHROPIC_MODEL` values you tested locally.
+The upload includes copied raw PDFs, `source_document_metadata.json`, `manifest.jsonl`, `artifact_revision.txt`, `parse_metadata.json`, text corpus files, optional `figures/` image artifacts, and index directories. Parser resume caches under `parse_resume_cache/` and legacy `parse/` are intentionally skipped because they are local-only and may contain temporary LlamaParse URLs that are not needed by AgentCore runtime.
 
 ## Run Locally
 
-Direct local invocation:
+Direct CLI:
 
 ```bash
-deactivate 2>/dev/null || true
-unset VIRTUAL_ENV
+cd app/GridAgentCore
+set -a
+source ../../.env
+set +a
+uv run python local_chat.py \
+  --methods vector,pageindex,find \
+  "What does Gate 2 readiness require?"
+```
+
+Payload shape:
+
+```json
+{
+  "prompt": "What does Gate 2 readiness require?",
+  "methods": ["vector", "pageindex", "graphrag", "find"],
+  "allow_sdk_file_tools": false,
+  "enable_subagents": true
+}
+```
+
+`enable_subagents` defaults to `true`; set it to `false` to keep retrieval in the root agent only.
+
+## Run The Frontend
+
+Terminal 1:
+
+```bash
+cd app/GridAgentCore
+set -a
+source ../../.env
+set +a
+uv run grid-local-api --port 8000
+```
+
+Terminal 2:
+
+```bash
+cd app/GridAgentCore/frontend
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. The UI posts the same payload, streams NDJSON events from `/api/grid/run`, and displays the answer, citations, root-agent turns, retrieval calls, subagent threads, latency, and errors. When cited evidence has attached figures, the source snippet card also shows the figure IDs and S3/local artifact links.
+
+Set `AGENTCORE_RUNTIME_ARN` in `.env` to make the local API forward `/api/grid/run` to a deployed AgentCore runtime instead of running the local SDK session. The optional request field `runtime_session_id` is passed as AgentCore `runtimeSessionId`; when omitted, the proxy creates one for the request.
+
+## Deploy To AgentCore
+
+`agentcore/agentcore.json` is configured for `app/GridAgentCore/`. Replace `GRID_S3_BUCKET` in that file before deployment, or keep it synchronized with `.env`.
+
+```bash
 set -a
 source .env
 set +a
-cd app/SimpleAgentCore
-uv run python local_chat.py "Explain AgentCore in one paragraph."
-```
-
-AgentCore local development server from the repository root:
-
-```bash
-deactivate 2>/dev/null || true
-unset VIRTUAL_ENV
-set -a
-source .env
-set +a
-agentcore dev --no-browser --port 8080
-```
-
-In another terminal:
-
-```bash
-curl -s http://127.0.0.1:8080/invocations \
-  -H "content-type: application/json" \
-  -d '{"prompt":"Hello, what can you do?"}'
-```
-
-## Deploy
-
-Run the non-AWS local checks first:
-
-```bash
-set -a
-source .env
-set +a
-npm install --prefix agentcore/cdk
+python3 -m json.tool agentcore/agentcore.json
+python3 -m json.tool agentcore/aws-targets.json
 agentcore validate
-```
-
-Preview the deployment. This still needs valid AWS credentials because AgentCore checks the target account and region:
-
-```bash
 agentcore deploy --dry-run
-```
-
-Deploy to AWS Bedrock AgentCore Runtime:
-
-```bash
 agentcore deploy
 ```
 
-Check status:
+Invoke:
 
 ```bash
-agentcore status
+agentcore invoke --payload '{
+  "prompt": "Summarize Gate 2 evidence requirements with citations.",
+  "methods": ["vector", "pageindex", "find"],
+  "enable_subagents": true
+}'
 ```
 
-## Invoke Deployed Agent
+## Isolation And Scalability
 
-```bash
-agentcore invoke --prompt "Give me a short checklist for launching a demo agent."
-```
+- AgentCore Runtime gives isolated sessions; preserve session IDs for continued conversations.
+- The v1 storage design uses S3. Each runtime downloads artifacts into `/tmp/grid-agent-core/artifacts` on first use and verifies the manifest/revision.
+- Keep `networkMode` as `PUBLIC` while using Bedrock plus S3. Move to VPC only when private dependencies require it.
+- Move from S3 download-on-start to AgentCore mounted filesystems/EFS only if artifact size, cold-start time, or concurrency requires it. AgentCore filesystem mounts require VPC/NFS configuration.
+- For higher concurrency, keep retrieval artifacts immutable by revision and upload a new S3 prefix for each rebuild. Deploy/runtime env vars can then point to the new prefix without mutating existing sessions.
 
-For a continued conversation:
+## Environment Variables
 
-```bash
-agentcore invoke --session-id demo-session --prompt "My project is a Bedrock chatbot."
-agentcore invoke --session-id demo-session --prompt "What should I test next?"
-```
+Runtime:
 
-## How It Works Internally
+- `AWS_REGION`
+- `CLAUDE_CODE_USE_BEDROCK=1`
+- `ANTHROPIC_MODEL`
+- `GRID_ARTIFACT_DIR`
+- `GRID_S3_BUCKET`
+- `GRID_S3_PREFIX`
+- `AGENTCORE_RUNTIME_ARN` and `AGENTCORE_RUNTIME_QUALIFIER` for optional local API forwarding to a deployed runtime.
 
-`main.py` creates a `BedrockAgentCoreApp` and exposes one `@app.entrypoint` function. The handler validates that the incoming payload contains a non-empty `prompt`, then calls `ask_claude`.
+Index-time only:
 
-`ask_claude` sets conservative defaults for Bedrock-backed Claude Agent SDK usage, builds `ClaudeAgentOptions`, disables tools, invokes `query()`, and extracts text from the SDK message stream. For CodeZip deployments, `chatbot.py` also ensures the bundled Claude CLI is executable before passing its path to Claude Agent SDK.
+- `GRID_DOCS_DIR` for the local source PDF folder used by `grid-parse-documents`.
+- `GRID_PARSE_PROVIDER` optional default parser: `llamaparse-agentic` or `pypdf`.
+- `LLAMA_CLOUD_API_KEY` for `grid-parse-documents --parser llamaparse-agentic`.
+- `LLAMAPARSE_MAX_PAGES_PER_JOB` optional page partition size for large LlamaParse PDFs. Defaults to `50`.
+- `LLAMAPARSE_TIMEOUT_SECONDS` optional wait timeout for each LlamaParse job. Defaults to `600`.
+- `GRID_PARSE_DOCUMENT_CONCURRENCY` controls how many PDFs are parsed in parallel. Defaults to `4`.
+- `GRID_MULTIMODAL_ENRICH=1` optionally enables post-parse Anthropic VLM descriptions and saved image artifacts.
+- `GRID_VLM_MODEL` optionally overrides the Anthropic API model used for multimodal enrichment. If unset, Bedrock-style `ANTHROPIC_MODEL` values are translated for direct Anthropic API use.
+- `GRID_VLM_RENDER_DPI` controls page-render resolution for enrichment. Defaults to `150`.
+- `GRID_VLM_CONCURRENCY` controls the run-wide parallel Anthropic VLM page enrichment call cap. Defaults to `4`.
+- `GRID_VLM_MAX_RETRIES` controls extra Anthropic VLM retries after SDK retries. Defaults to `3`.
+- `GRID_VLM_RETRY_BASE_SECONDS` controls VLM retry backoff base delay. Defaults to `2`.
+- `ANTHROPIC_API_KEY` for Anthropic direct VLM enrichment and Message Batches.
+- `GRID_BATCH_MODEL` for batch summary model selection.
+- `VOYAGE_API_KEY` for Voyage vector indexing and the local GraphRAG worker embeddings.
+- `GRID_GRAPHRAG_MODEL` and `GRID_GRAPHRAG_EMBED_MODEL` to override local GraphRAG worker defaults.
 
-AgentCore packages `app/SimpleAgentCore/` as a CodeZip app using `agentcore/agentcore.json`, then hosts it as an HTTP AgentCore Runtime endpoint.
+## IAM Permissions
 
-## Prompt Workflow
+Local/deploy caller:
 
-Local direct CLI flow:
+- AgentCore/CDK deployment permissions.
+- CloudFormation, IAM role/policy, S3 asset, and CloudWatch Logs permissions required by the AgentCore CLI.
+- `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` for the selected Claude Sonnet model.
+- S3 read/write to `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/*`.
 
-```text
-Terminal prompt argument
-  -> app/SimpleAgentCore/local_chat.py
-  -> load .env from repository root/current shell
-  -> chatbot.ask_claude(prompt)
-  -> Claude Agent SDK query()
-  -> Amazon Bedrock InvokeModel/streaming invoke using AWS credentials
-  -> Claude Sonnet response events
-  -> collect_text()
-  -> final text printed to stdout
-```
+Runtime execution role:
 
-Input shape:
+- Bedrock invoke permissions for the configured model.
+- `s3:ListBucket` on the artifact bucket with the configured prefix condition.
+- `s3:GetObject` on `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/*`.
 
-```bash
-uv run python local_chat.py "Explain AgentCore in one paragraph."
-```
-
-Output shape:
-
-```text
-AgentCore is ...
-```
-
-Local AgentCore server flow:
-
-```text
-HTTP POST /invocations with {"prompt": "..."}
-  -> local AgentCore dev server
-  -> app/SimpleAgentCore/main.py invoke(payload)
-  -> validate payload["prompt"]
-  -> chatbot.ask_claude(prompt)
-  -> Claude Agent SDK
-  -> Amazon Bedrock Claude Sonnet
-  -> {"response": "..."} or {"error": "..."}
-```
-
-Input shape:
-
-```json
-{"prompt":"Hello, what can you do?"}
-```
-
-Successful output shape:
-
-```json
-{"response":"..."}
-```
-
-Validation or runtime error output shape:
-
-```json
-{"error":"..."}
-```
-
-Deployed AWS flow:
-
-```text
-agentcore deploy
-  -> AgentCore CLI reads agentcore/agentcore.json
-  -> AgentCore CLI reads agentcore/aws-targets.json
-  -> AgentCore CLI uses agentcore/cdk to synthesize/deploy CloudFormation
-  -> packages app/SimpleAgentCore/ as CodeZip
-  -> deploys an AgentCore Runtime in the target AWS account/region
-  -> runtime starts main.py in AWS
-
-agentcore invoke --prompt "..."
-  -> AgentCore Runtime endpoint
-  -> deployed main.py invoke(payload)
-  -> Claude Agent SDK running inside AWS runtime
-  -> Amazon Bedrock Claude Sonnet in AWS_REGION
-  -> response returned through AgentCore Runtime
-  -> CLI prints the response
-```
-
-The deployed runtime should use its AWS execution role, not local `.env` secrets. Local `.env` is for your laptop commands: selecting region/model and authenticating the deployment/invocation CLI. In AWS, IAM role permissions replace local access keys.
-
-## AWS Permissions
-
-For local model invocation, the caller needs permission to invoke the chosen Bedrock model, usually including:
-
-```text
-bedrock:InvokeModel
-bedrock:InvokeModelWithResponseStream
-```
-
-For deployment, the caller also needs permissions required by the AgentCore CLI/CDK to create and update AgentCore Runtime, IAM roles/policies, CloudFormation stacks, S3 assets, CloudWatch logs, and related deployment resources.
-
-The runtime execution role should be kept narrow: grant only the Bedrock invoke permissions needed for the configured Claude Sonnet model.
+No local AWS credentials or API keys should be committed.
 
 ## Verify
 
-```bash
-deactivate 2>/dev/null || true
-unset VIRTUAL_ENV
-cd app/SimpleAgentCore
-uv run pytest ../../tests
-uv run python -m py_compile main.py chatbot.py local_chat.py ../../tests/test_chatbot.py
-```
-
-## Clean Up
+Do not run the full Grid index build unless you intend to pay for and wait on it. Run these checks:
 
 ```bash
-agentcore remove all
-agentcore deploy
+cd app/GridAgentCore
+uv run pytest
+python3 -m py_compile main.py local_chat.py grid_agent_core/*.py grid_agent_core/graphrag/*.py
+
+cd frontend
+npm test
+npm run build
+
+cd ../../SimpleAgentCore
+uv run pytest
+
+cd ../..
+agentcore validate
 ```
+
+## SimpleAgentCore Baseline
+
+The minimal chatbot baseline is still available in `app/SimpleAgentCore/` and documented in `docs/simple_agent_core.md`. To deploy the baseline instead of Grid Agents, change `agentcore/agentcore.json` `codeLocation` back to `app/SimpleAgentCore/` and the runtime name back to `SimpleAgentCore`.

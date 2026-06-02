@@ -22,5 +22,5 @@ dev = [
 py-modules = ["chatbot", "main", "local_chat"]
 
 [tool.pytest.ini_options]
-testpaths = ["../../tests"]
+testpaths = ["../../tests/test_chatbot.py"]
 pythonpath = ["."]

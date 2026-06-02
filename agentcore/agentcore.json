@@ -1,18 +1,18 @@
 {
   "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
-  "name": "SimpleAgentCore",
+  "name": "GridAgentCore",
   "version": 1,
   "managedBy": "CDK",
   "tags": {
     "agentcore:created-by": "codex",
-    "agentcore:project-name": "SimpleAgentCore"
+    "agentcore:project-name": "GridAgentCore"
   },
   "runtimes": [
     {
-      "name": "SimpleAgentCore",
+      "name": "GridAgentCore",
       "build": "CodeZip",
       "entrypoint": "main.py",
-      "codeLocation": "app/SimpleAgentCore/",
+      "codeLocation": "app/GridAgentCore/",
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
       "protocol": "HTTP",
@@ -33,8 +33,16 @@
           "value": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
         },
         {
-          "name": "AGENT_SYSTEM_PROMPT",
-          "value": "You are a concise, helpful chatbot. Answer directly and ask clarifying questions when needed."
+          "name": "GRID_ARTIFACT_DIR",
+          "value": "/tmp/grid-agent-core/artifacts"
+        },
+        {
+          "name": "GRID_S3_BUCKET",
+          "value": "replace-with-grid-agent-artifact-bucket"
+        },
+        {
+          "name": "GRID_S3_PREFIX",
+          "value": "grid-agent-core"
         }
       ]
     }

@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+from grid_agent_core.corpus import write_manifest
+from grid_agent_core.indexes import build_pageindex, build_vector_index
+from grid_agent_core.models import DocumentRecord, FigureRecord, PageRecord
+from grid_agent_core.retrieval import GridRetrievalRepository
+
+
+def write_artifact_fixture(tmp_path):
+    artifact_dir = tmp_path / "artifacts"
+    text_dir = artifact_dir / "corpus" / "grid"
+    text_dir.mkdir(parents=True)
+    text = "[Page 1]\nGate 2 evidence must show land rights and readiness.\n[Page 2]\nQueue management follows the CNDM process.\n"
+    text_path = text_dir / "doc.txt"
+    text_path.write_text(text, encoding="utf-8")
+    figure_dir = artifact_dir / "figures" / "grid" / "doc"
+    figure_dir.mkdir(parents=True)
+    (figure_dir / "gate-2.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    record = DocumentRecord(
+        document_id="grid/doc.txt",
+        title="Gate 2 Criteria",
+        category="05 - Connections Reform (TMO4+)",
+        filename="doc.pdf",
+        source_path="raw/doc.pdf",
+        text_path="corpus/grid/doc.txt",
+        source_sha256="source",
+        text_sha256="text",
+        pages=[
+            PageRecord(page=1, start_char=0, end_char=text.index("[Page 2]"), text_sha256="p1"),
+            PageRecord(page=2, start_char=text.index("[Page 2]"), end_char=len(text), text_sha256="p2"),
+        ],
+        figures=[
+            FigureRecord(
+                figure_id="grid/doc#fig0001",
+                page=1,
+                description="Gate 2 readiness diagram",
+                image_path="figures/grid/doc/gate-2.png",
+                image_sha256="4c4b6a3b6c40d99661317a10dcac4e13fc762a6f146e8c8f7e3b9e2cb467ff31",
+                filename="gate-2.png",
+                content_type="image/png",
+                size_bytes=8,
+                start_char=0,
+                end_char=text.index("[Page 2]"),
+            )
+        ],
+    )
+    write_manifest(artifact_dir, [record])
+    return artifact_dir
+
+
+def test_exact_find_returns_normalized_evidence(tmp_path) -> None:
+    artifact_dir = write_artifact_fixture(tmp_path)
+    repo = GridRetrievalRepository(artifact_dir)
+
+    evidence = repo.search("find", "land rights")
+
+    assert evidence
+    assert evidence[0].document_id == "grid/doc.txt"
+    assert evidence[0].title == "Gate 2 Criteria"
+    assert evidence[0].page == 1
+    assert evidence[0].artifact_source == "find"
+    assert "land rights" in evidence[0].span_text
+    assert evidence[0].metadata["figures"][0]["figure_id"] == "grid/doc#fig0001"
+
+
+def test_retrieval_adds_s3_figure_uri(tmp_path, monkeypatch) -> None:
+    artifact_dir = write_artifact_fixture(tmp_path)
+    monkeypatch.setenv("GRID_S3_BUCKET", "bucket")
+    monkeypatch.setenv("GRID_S3_PREFIX", "prefix")
+    repo = GridRetrievalRepository(artifact_dir)
+
+    evidence = repo.search("find", "land rights")
+
+    figure = evidence[0].metadata["figures"][0]
+    assert figure["local_path"].endswith("figures/grid/doc/gate-2.png")
+    assert figure["s3_uri"] == "s3://bucket/prefix/figures/grid/doc/gate-2.png"
+
+
+def test_vector_and_pageindex_indexes_are_queryable(tmp_path) -> None:
+    artifact_dir = write_artifact_fixture(tmp_path)
+    build_vector_index(artifact_dir)
+    build_pageindex(artifact_dir)
+    repo = GridRetrievalRepository(artifact_dir)
+
+    vector = repo.search("vector", "readiness evidence")
+    pageindex = repo.search("pageindex", "queue management")
+
+    assert vector[0].artifact_source == "vector"
+    assert pageindex[0].artifact_source == "pageindex"
