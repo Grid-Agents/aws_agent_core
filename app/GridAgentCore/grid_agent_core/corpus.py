@@ -39,7 +39,7 @@ PARSER_ALIASES = {
     "llamaparse_agentic": PARSER_LLAMAPARSE_AGENTIC,
     "llamaparse-agentic": PARSER_LLAMAPARSE_AGENTIC,
 }
-LLAMAPARSE_AGENTIC_ARTIFACTS_VERSION = 3
+LLAMAPARSE_AGENTIC_ARTIFACTS_VERSION = 4
 DEFAULT_DOCUMENT_CONCURRENCY = 4
 FULL_GRID_CODE_FILENAME = "00_The_Full_Grid_Code.pdf"
 DEFAULT_SMOKE_PAGE_RANGE = (1, 8)
@@ -169,6 +169,7 @@ def _llamaparse_result_to_corpus(
             parsed_pages=page_markdown,
             artifact_dir=artifact_dir,
             document_key=document_key,
+            raw_payload=parsed.raw_payload,
             cache_dir=visual_cache_dir,
             show_progress=show_progress,
             vlm_concurrency=vlm_concurrency,
@@ -180,6 +181,7 @@ def _llamaparse_result_to_corpus(
         visual_artifacts,
         document_key=document_key,
         pages=pages,
+        corpus_text=text,
     )
     return text, pages, figures, parsed.raw_payload
 
@@ -375,9 +377,9 @@ def build_corpus(
     }
     try:
         for future in as_completed(futures):
-            _raise_if_cancelled(cancel_event)
             index = futures[future]
             record = future.result()
+            _raise_if_cancelled(cancel_event)
             records_by_index[index] = record
             progress.advance(detail=f"{Path(record.source_path).name}")
         missing = [
@@ -867,8 +869,8 @@ def main() -> None:
         action="store_true",
         default=None,
         help=(
-            "Render parsed pages, ask an Anthropic VLM for visual descriptions, "
-            "insert them into Markdown, and save linked page images."
+            "Detect candidate figures, ask an Anthropic VLM for figure-only descriptions, "
+            "insert them into Markdown, and save linked cropped figure images."
         ),
     )
     parser.add_argument(
@@ -894,7 +896,7 @@ def main() -> None:
         type=int,
         default=None,
         help=(
-            "Run-wide number of Anthropic VLM page-enrichment calls to run in parallel. "
+            "Run-wide number of Anthropic VLM figure-crop calls to run in parallel. "
             "Defaults to GRID_VLM_CONCURRENCY or 4."
         ),
     )
