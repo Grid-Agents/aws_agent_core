@@ -1,0 +1,38 @@
+{
+  "parser": "llamaparse_agentic",
+  "source_sha256": "f1fa6f7e4da11d90dda165b8593f23661d8ab62856894161f34b2876bcbb76d9",
+  "llamaparse_agentic_artifacts_version": 4,
+  "llamaparse_page_range": "262-264",
+  "multimodal_enrich": false,
+  "record": {
+    "document_id": "grid/02-industry-codes-00-the-full-grid-code.txt",
+    "title": "00_The_Full_Grid_Code",
+    "category": "02 - Industry Codes",
+    "filename": "00_The_Full_Grid_Code.pdf",
+    "source_path": "raw/02 - Industry Codes/00_The_Full_Grid_Code.pdf",
+    "text_path": "corpus/grid/02-industry-codes-00-the-full-grid-code.txt",
+    "source_sha256": "f1fa6f7e4da11d90dda165b8593f23661d8ab62856894161f34b2876bcbb76d9",
+    "text_sha256": "184eda714d2848fa95d989b186e39afce914e711ad430841d02ef7b544684efa",
+    "pages": [
+      {
+        "page": 262,
+        "start_char": 0,
+        "end_char": 1249,
+        "text_sha256": "34af4c93f52f290c0d5283fd3d3057189a82aab77d1bc8018099815be083cc9d"
+      },
+      {
+        "page": 263,
+        "start_char": 1251,
+        "end_char": 2435,
+        "text_sha256": "36681384dfe75b9d09e0bc8b02eb1785e16defd24e86b969c506ea3a1ba848e2"
+      },
+      {
+        "page": 264,
+        "start_char": 2437,
+        "end_char": 4553,
+        "text_sha256": "dd56d1baedab35773bdc038ee7916758149d031060eeb3549db1fbad3c178316"
+      }
+    ],
+    "figures": []
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "version": 3,
+  "page": 263,
+  "markdown_sha256": "36681384dfe75b9d09e0bc8b02eb1785e16defd24e86b969c506ea3a1ba848e2",
+  "context_sha256": "6f237908a3f2de3fe4701ebc56319ba63b3a464a12cbad752d23c3ec4fda26c2",
+  "render_dpi": 150,
+  "max_render_width": 1600,
+  "artifacts": [
+    {
+      "page": 263,
+      "description": "This figure, titled \"Interpretation of Primary and Secondary Response Values,\" consists of two vertically stacked time-series plots illustrating power plant frequency response behavior over a 30-minute period following a -0.5 Hz frequency disturbance. The top plot shows Frequency Change (Hz) on the y-axis versus time on the x-axis, depicting a step decrease of -0.5 Hz at approximately 10 seconds that is sustained through 30 minutes. The bottom plot shows Plant Response (MW) on the y-axis versus time, with two labeled response phases: \"P\" (Primary response) marked at 10 seconds, showing an initial rapid increase in plant output, and \"S\" (Secondary response) marked at the 30-minute point, indicating sustained output. The red curve in the lower plot rises sharply from zero to a peak around 30 seconds, then gradually settles to a steady-state level (black horizontal line) that is maintained through 30 minutes. This figure illustrates the Grid Code requirement for generating units to provide both fast primary frequency response (within 10 seconds) and sustained secondary response (maintained for 30 minutes) following a frequency deviation. The visual clearly distinguishes the dynamic primary response phase from the longer-term secondary response phase, which are critical parameters for grid stability and are referenced in the accompanying table that quantifies the P and S response values at specific time points.",
+      "image_path": "figures/grid/02-industry-codes-00-the-full-grid-code/page-0263-figure-01.jpg",
+      "image_sha256": "6c060bfaf3d304e37d1a677e6b966d48b00d9ea5f6e9f57a6ccbce8924c8cab7",
+      "filename": "page-0263-figure-01.jpg",
+      "content_type": "image/jpeg",
+      "size_bytes": 32508,
+      "category": "figure_crop",
+      "bbox": {
+        "unit": "page_fraction",
+        "x": 0.220212,
+        "y": 0.080673,
+        "w": 0.607275,
+        "h": 0.334806,
+        "source": "pdf_image_block",
+        "candidate_index": 1
+      }
+    },
+    {
+      "page": 263,
+      "description": "This figure, titled \"Figure CC.A.3.3 - Interpretation of High Frequency Response Values,\" consists of two vertically stacked time-series plots illustrating plant response to a high-frequency event in a power system. The top plot shows Frequency Change (Hz) on the vertical axis versus time on the horizontal axis. It depicts a linear increase from 0 Hz to +0.5 Hz over the first 10 seconds, then remains constant at +0.5 Hz thereafter. The bottom plot shows Plant Response (MW) on the vertical axis versus time. It starts at an initial high value, then decreases sharply over the first 10 seconds by an amount labeled \"H,\" reaching a lower steady-state level that persists over time. A vertical dashed line at 10 seconds marks the transition point on both plots, aligning the frequency step completion with the plant response change. The figure demonstrates how generating plant is expected to reduce output (by H MW) in response to a +0.5 Hz frequency rise within 10 seconds, illustrating high-frequency response requirements in the Grid Code. The accompanying table in the parsed context specifies the time points (0s, 10s, and ongoing time), frequency changes (0, +0.5 Hz), and plant response values (0, H MW), providing the numeric interpretation of the graphical relationship.",
+      "image_path": "figures/grid/02-industry-codes-00-the-full-grid-code/page-0263-figure-02.jpg",
+      "image_sha256": "9683800c1536b9e4b2c39c761101660d0cdfa8346680c424703d376d2746a0ce",
+      "filename": "page-0263-figure-02.jpg",
+      "content_type": "image/jpeg",
+      "size_bytes": 26173,
+      "category": "figure_crop",
+      "bbox": {
+        "unit": "page_fraction",
+        "x": 0.221522,
+        "y": 0.446978,
+        "w": 0.604671,
+        "h": 0.329473,
+        "source": "pdf_image_block",
+        "candidate_index": 2
+      }
+    }
+  ],
+  "raw_responses": [
+    {
+      "candidate_index": 1,
+      "raw_response": "```json\n{\n  \"material_figure\": true,\n  \"figure_type\": \"time-series plot\",\n  \"description\": \"This figure, titled \\\"Interpretation of Primary and Secondary Response Values,\\\" consists of two vertically stacked time-series plots illustrating power plant frequency response behavior over a 30-minute period following a -0.5 Hz frequency disturbance. The top plot shows Frequency Change (Hz) on the y-axis versus time on the x-axis, depicting a step decrease of -0.5 Hz at approximately 10 seconds that is sustained through 30 minutes. The bottom plot shows Plant Response (MW) on the y-axis versus time, with two labeled response phases: \\\"P\\\" (Primary response) marked at 10 seconds, showing an initial rapid increase in plant output, and \\\"S\\\" (Secondary response) marked at the 30-minute point, indicating sustained output. The red curve in the lower plot rises sharply from zero to a peak around 30 seconds, then gradually settles to a steady-state level (black horizontal line) that is maintained through 30 minutes. This figure illustrates the Grid Code requirement for generating units to provide both fast primary frequency response (within 10 seconds) and sustained secondary response (maintained for 30 minutes) following a frequency deviation. The visual clearly distinguishes the dynamic primary response phase from the longer-term secondary response phase, which are critical parameters for grid stability and are referenced in the accompanying table that quantifies the P and S response values at specific time points.\"\n}\n```"
+    },
+    {
+      "candidate_index": 2,
+      "raw_response": "```json\n{\n  \"material_figure\": true,\n  \"figure_type\": \"time-series plot\",\n  \"description\": \"This figure, titled \\\"Figure CC.A.3.3 - Interpretation of High Frequency Response Values,\\\" consists of two vertically stacked time-series plots illustrating plant response to a high-frequency event in a power system. The top plot shows Frequency Change (Hz) on the vertical axis versus time on the horizontal axis. It depicts a linear increase from 0 Hz to +0.5 Hz over the first 10 seconds, then remains constant at +0.5 Hz thereafter. The bottom plot shows Plant Response (MW) on the vertical axis versus time. It starts at an initial high value, then decreases sharply over the first 10 seconds by an amount labeled \\\"H,\\\" reaching a lower steady-state level that persists over time. A vertical dashed line at 10 seconds marks the transition point on both plots, aligning the frequency step completion with the plant response change. The figure demonstrates how generating plant is expected to reduce output (by H MW) in response to a +0.5 Hz frequency rise within 10 seconds, illustrating high-frequency response requirements in the Grid Code. The accompanying table in the parsed context specifies the time points (0s, 10s, and ongoing time), frequency changes (0, +0.5 Hz), and plant response values (0, H MW), providing the numeric interpretation of the graphical relationship.\"\n}\n```"
+    }
+  ]
+}

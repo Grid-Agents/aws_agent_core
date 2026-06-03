@@ -1,0 +1,207 @@
+[Page 262]
+<u>Figure CC.A.3.1 - Minimum Frequency Response Requirement Profile for a 0.5 Hz frequency change from Target Frequency</u>
+
+<table>
+  <thead>
+    <tr>
+        <th>Series</th>
+        <th>50</th>
+        <th>55</th>
+        <th>60</th>
+        <th>65</th>
+        <th>70</th>
+        <th>75</th>
+        <th>80</th>
+        <th>85</th>
+        <th>90</th>
+        <th>95</th>
+        <th>100</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+        <td>Primary / Secondary</td>
+        <td> </td>
+        <td>10.00</td>
+        <td>10.00</td>
+        <td>10.00</td>
+        <td>10.00</td>
+        <td>10.00</td>
+        <td>10.00</td>
+        <td>7.50</td>
+        <td>5.00</td>
+        <td>2.50</td>
+        <td>0.00</td>
+    </tr>
+    <tr>
+        <td>High</td>
+        <td> </td>
+        <td>0.00</td>
+        <td>-3.33</td>
+        <td>-6.67</td>
+        <td>-10.00</td>
+        <td>-10.00</td>
+        <td>-10.00</td>
+        <td>-10.00</td>
+        <td>-10.00</td>
+        <td>-10.00</td>
+        <td>-5.00</td>
+    </tr>
+  </tbody>
+</table>
+
+**RC - Registered Capacity**
+**MG - Minimum Generation**
+**DMOL - Designed Minimum Operating Level**
+
+Issue 6 Revision 32
+CC
+74 of 101
+19 May 2025
+
+Issue 6 Revision 32
+CC
+74 of 101
+19 May 2025
+
+
+[Page 263]
+<u>Figure CC.A.3.2 - Interpretation of Primary and Secondary Response Values</u>
+
+<table>
+  <thead>
+    <tr>
+        <th>Time</th>
+        <th>Frequency Change (Hz)</th>
+        <th>Plant Response (MW)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+        <td>0s</td>
+        <td>0</td>
+        <td>0</td>
+    </tr>
+    <tr>
+        <td>10s</td>
+        <td>-0.5 (P)</td>
+        <td>P</td>
+    </tr>
+    <tr>
+        <td>30s</td>
+        <td>-0.5</td>
+        <td> </td>
+    </tr>
+    <tr>
+        <td>30 min</td>
+        <td>-0.5</td>
+        <td>S</td>
+    </tr>
+  </tbody>
+</table>
+
+<u>Figure CC.A.3.3 - Interpretation of High Frequency Response Values</u>
+
+<table>
+  <thead>
+    <tr>
+        <th>Time</th>
+        <th>Frequency Change (Hz)</th>
+        <th>Plant Response (MW)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+        <td>0s</td>
+        <td>0</td>
+        <td>0</td>
+    </tr>
+    <tr>
+        <td>10s</td>
+        <td>+0.5 (H)</td>
+        <td>H</td>
+    </tr>
+    <tr>
+        <td>time</td>
+        <td>+0.5</td>
+        <td> </td>
+    </tr>
+  </tbody>
+</table>
+
+Issue 6 Revision 32
+CC
+75 of 101
+19 May 2025
+
+Issue 6 Revision 32
+CC
+75 of 101
+19 May 2025
+
+
+[Page 264]
+# APPENDIX 4 - FAULT RIDE THROUGH REQUIREMENTS
+
+# APPENDIX 4A - FAULT RIDE THROUGH REQUIREMENTS FOR ONSHORE SYNCHRONOUS GENERATING UNITS, ONSHORE POWER PARK MODULES, ONSHORE DC CONVERTERS OTSDUW PLANT AND APPARATUS AT THE INTERFACE POINT, OFFSHORE SYNCHRONOUS GENERATING UNITS IN A LARGE POWER STATION, OFFSHORE POWER PARK MODULES IN A LARGE POWER STATION AND OFFSHORE DC CONVERTERS IN A LARGE POWER STATION WHICH SELECT TO MEET THE FAULT RIDE THROUGH REQUIREMENTS AT THE INTERFACE POINT
+
+## CC.A.4A.1 <u>Scope</u>
+
+The fault ride through requirement is defined in CC.6.3.15.1 (a), (b) and CC.6.3.15.3. This Appendix provides illustrations by way of examples only of CC.6.3.15.1 (a) (i) and further background and illustrations to CC.6.3.15.1 (1b) (i) and CC.6.3.15.1 (2b) (i) and is not intended to show all possible permutations.
+
+## CC.A.4A.2 <u>Short Circuit Faults At Supergrid Voltage On The Onshore Transmission System Up To 140ms In Duration</u>
+
+For short circuit faults at **Supergrid Voltage** on the **Onshore Transmission System** (which could be at an **Interface Point**) up to 140ms in duration, the fault ride through requirement is defined in CC.6.3.15.1 (a) (i). Figures CC.A.4A.1 (a) and (b) illustrate two typical examples of voltage recovery for short-circuit faults cleared within 140ms by two circuit breakers (a) and three circuit breakers (b) respectively.
+
+<table>
+  <thead>
+    <tr>
+        <th>Time (ms)</th>
+        <th>Voltage (%)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+        <td>0</td>
+        <td>100</td>
+    </tr>
+    <tr>
+        <td>0</td>
+        <td>0</td>
+    </tr>
+    <tr>
+        <td>80</td>
+        <td>0</td>
+    </tr>
+    <tr>
+        <td>80</td>
+        <td>50</td>
+    </tr>
+    <tr>
+        <td>120</td>
+        <td>50</td>
+    </tr>
+    <tr>
+        <td>120</td>
+        <td>80</td>
+    </tr>
+    <tr>
+        <td>Time</td>
+        <td>90</td>
+    </tr>
+  </tbody>
+</table>
+
+Typical fault cleared in less than 140ms: 2 ended circuit
+
+Figure CC.A.4A.1 (a)
+
+Issue 6 Revision 32
+CC
+76 of 101
+19 May 2025
+
+Issue 6 Revision 32
+CC
+76 of 101
+19 May 2025

@@ -1,0 +1,9 @@
+{
+  "parser": "llamaparse_agentic",
+  "document_count": 1,
+  "resume": true,
+  "llamaparse_page_range": "262-264",
+  "multimodal_enrich": true,
+  "document_concurrency": 1,
+  "vlm_concurrency": 1
+}

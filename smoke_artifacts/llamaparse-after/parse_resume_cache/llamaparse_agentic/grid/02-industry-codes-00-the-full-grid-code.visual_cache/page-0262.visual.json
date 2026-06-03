@@ -1,0 +1,35 @@
+{
+  "version": 3,
+  "page": 262,
+  "markdown_sha256": "3e592876cdde0321397a847fe46d2c70bb6f709990c3124cf2291298c0a684e9",
+  "context_sha256": "6507ce774e486e12e2f5d873795c7503aead53adb4e833c317a37b27ce71a3b3",
+  "render_dpi": 150,
+  "max_render_width": 1600,
+  "artifacts": [
+    {
+      "page": 262,
+      "description": "Figure CC.A.3.1 presents the Minimum Frequency Response Requirement Profile for a 0.5 Hz frequency change from Target Frequency. The chart plots Primary/Secondary High Frequency Response levels (% on RC) on the y-axis against Loading (% on RC) on the x-axis, ranging from 50% to 100%. The blue line represents Primary/Secondary response, which remains flat at 10% from 55% to 80% loading, then decreases linearly to 0% at 100% loading. The magenta line represents High frequency response, starting at 0% at 55% loading (marked as DMOL - Designed Minimum Operating Level), decreasing linearly to -10% at 65% loading (marked as MG - Minimum Generation), remaining flat at -10% until 95% loading, then rising to approximately -5% at 100% loading (shown as a dotted line labeled Plant dependent requirement). A gray shaded region between approximately 55% and 65% loading is labeled as the \"Dynamic Operating Zone.\" The legend clarifies that RC stands for Registered Capacity, MG for Minimum Generation, and DMOL for Designed Minimum Operating Level. This figure establishes the mandatory frequency response capability requirements for generating units across different operating load levels, distinguishing between upward (Primary/Secondary) and downward (High) frequency response obligations.",
+      "image_path": "figures/grid/02-industry-codes-00-the-full-grid-code/page-0262-figure-01.jpg",
+      "image_sha256": "4eb4e7735108a4080d93a911ceeed6edae1e07521f2db134317a3ee07405e334",
+      "filename": "page-0262-figure-01.jpg",
+      "content_type": "image/jpeg",
+      "size_bytes": 73497,
+      "category": "figure_crop",
+      "bbox": {
+        "unit": "page_fraction",
+        "x": 0.061421,
+        "y": 0.118111,
+        "w": 0.896388,
+        "h": 0.49399,
+        "source": "pdf_image_block",
+        "candidate_index": 1
+      }
+    }
+  ],
+  "raw_responses": [
+    {
+      "candidate_index": 1,
+      "raw_response": "```json\n{\n  \"material_figure\": true,\n  \"figure_type\": \"chart\",\n  \"description\": \"Figure CC.A.3.1 presents the Minimum Frequency Response Requirement Profile for a 0.5 Hz frequency change from Target Frequency. The chart plots Primary/Secondary High Frequency Response levels (% on RC) on the y-axis against Loading (% on RC) on the x-axis, ranging from 50% to 100%. The blue line represents Primary/Secondary response, which remains flat at 10% from 55% to 80% loading, then decreases linearly to 0% at 100% loading. The magenta line represents High frequency response, starting at 0% at 55% loading (marked as DMOL - Designed Minimum Operating Level), decreasing linearly to -10% at 65% loading (marked as MG - Minimum Generation), remaining flat at -10% until 95% loading, then rising to approximately -5% at 100% loading (shown as a dotted line labeled Plant dependent requirement). A gray shaded region between approximately 55% and 65% loading is labeled as the \\\"Dynamic Operating Zone.\\\" The legend clarifies that RC stands for Registered Capacity, MG for Minimum Generation, and DMOL for Designed Minimum Operating Level. This figure establishes the mandatory frequency response capability requirements for generating units across different operating load levels, distinguishing between upward (Primary/Secondary) and downward (High) frequency response obligations.\"\n}\n```"
+    }
+  ]
+}

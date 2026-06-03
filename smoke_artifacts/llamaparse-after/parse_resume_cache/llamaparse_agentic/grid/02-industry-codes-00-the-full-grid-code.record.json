@@ -1,0 +1,127 @@
+{
+  "parser": "llamaparse_agentic",
+  "source_sha256": "f1fa6f7e4da11d90dda165b8593f23661d8ab62856894161f34b2876bcbb76d9",
+  "llamaparse_agentic_artifacts_version": 4,
+  "llamaparse_page_range": "262-264",
+  "multimodal_enrich": true,
+  "record": {
+    "document_id": "grid/02-industry-codes-00-the-full-grid-code.txt",
+    "title": "00_The_Full_Grid_Code",
+    "category": "02 - Industry Codes",
+    "filename": "00_The_Full_Grid_Code.pdf",
+    "source_path": "raw/02 - Industry Codes/00_The_Full_Grid_Code.pdf",
+    "text_path": "corpus/grid/02-industry-codes-00-the-full-grid-code.txt",
+    "source_sha256": "f1fa6f7e4da11d90dda165b8593f23661d8ab62856894161f34b2876bcbb76d9",
+    "text_sha256": "8a38806c39a4de265a6e14b12250e87f144e15fcd827a9babfbb819effce07eb",
+    "pages": [
+      {
+        "page": 262,
+        "start_char": 0,
+        "end_char": 3153,
+        "text_sha256": "67134266fbe4ff7320bba30db37fc1cba419be51f36b6c5afe5f38520b58af6e"
+      },
+      {
+        "page": 263,
+        "start_char": 3155,
+        "end_char": 7334,
+        "text_sha256": "645fb867dfc693f2a96d6eee4e31e47f454b4504689f97ad04cc54d2a728f08b"
+      },
+      {
+        "page": 264,
+        "start_char": 7336,
+        "end_char": 10901,
+        "text_sha256": "2d4fc25eff8b701c2ac87d36bf6dfe78df2e81abb1bf4f4d60a8a77ba155372f"
+      }
+    ],
+    "figures": [
+      {
+        "figure_id": "grid/02-industry-codes-00-the-full-grid-code#figure0001",
+        "page": 262,
+        "description": "Figure CC.A.3.1 presents the Minimum Frequency Response Requirement Profile for a 0.5 Hz frequency change from Target Frequency. The chart plots Primary/Secondary High Frequency Response levels (% on RC) on the y-axis against Loading (% on RC) on the x-axis, ranging from 50% to 100%. The blue line represents Primary/Secondary response, which remains flat at 10% from 55% to 80% loading, then decreases linearly to 0% at 100% loading. The magenta line represents High frequency response, starting at 0% at 55% loading (marked as DMOL - Designed Minimum Operating Level), decreasing linearly to -10% at 65% loading (marked as MG - Minimum Generation), remaining flat at -10% until 95% loading, then rising to approximately -5% at 100% loading (shown as a dotted line labeled Plant dependent requirement). A gray shaded region between approximately 55% and 65% loading is labeled as the \"Dynamic Operating Zone.\" The legend clarifies that RC stands for Registered Capacity, MG for Minimum Generation, and DMOL for Designed Minimum Operating Level. This figure establishes the mandatory frequency response capability requirements for generating units across different operating load levels, distinguishing between upward (Primary/Secondary) and downward (High) frequency response obligations.",
+        "image_path": "figures/grid/02-industry-codes-00-the-full-grid-code/page-0262-figure-01.jpg",
+        "image_sha256": "4eb4e7735108a4080d93a911ceeed6edae1e07521f2db134317a3ee07405e334",
+        "filename": "page-0262-figure-01.jpg",
+        "content_type": "image/jpeg",
+        "size_bytes": 73497,
+        "category": "figure_crop",
+        "start_char": 1722,
+        "end_char": 3153,
+        "bbox": {
+          "unit": "page_fraction",
+          "x": 0.061421,
+          "y": 0.118111,
+          "w": 0.896388,
+          "h": 0.49399,
+          "source": "pdf_image_block",
+          "candidate_index": 1
+        }
+      },
+      {
+        "figure_id": "grid/02-industry-codes-00-the-full-grid-code#figure0002",
+        "page": 263,
+        "description": "This figure, titled \"Interpretation of Primary and Secondary Response Values,\" consists of two vertically stacked time-series plots illustrating power plant frequency response behavior over a 30-minute period following a -0.5 Hz frequency disturbance. The top plot shows Frequency Change (Hz) on the y-axis versus time on the x-axis, depicting a step decrease of -0.5 Hz at approximately 10 seconds that is sustained through 30 minutes. The bottom plot shows Plant Response (MW) on the y-axis versus time, with two labeled response phases: \"P\" (Primary response) marked at 10 seconds, showing an initial rapid increase in plant output, and \"S\" (Secondary response) marked at the 30-minute point, indicating sustained output. The red curve in the lower plot rises sharply from zero to a peak around 30 seconds, then gradually settles to a steady-state level (black horizontal line) that is maintained through 30 minutes. This figure illustrates the Grid Code requirement for generating units to provide both fast primary frequency response (within 10 seconds) and sustained secondary response (maintained for 30 minutes) following a frequency deviation. The visual clearly distinguishes the dynamic primary response phase from the longer-term secondary response phase, which are critical parameters for grid stability and are referenced in the accompanying table that quantifies the P and S response values at specific time points.",
+        "image_path": "figures/grid/02-industry-codes-00-the-full-grid-code/page-0263-figure-01.jpg",
+        "image_sha256": "6c060bfaf3d304e37d1a677e6b966d48b00d9ea5f6e9f57a6ccbce8924c8cab7",
+        "filename": "page-0263-figure-01.jpg",
+        "content_type": "image/jpeg",
+        "size_bytes": 32508,
+        "category": "figure_crop",
+        "start_char": 4340,
+        "end_char": 5912,
+        "bbox": {
+          "unit": "page_fraction",
+          "x": 0.220212,
+          "y": 0.080673,
+          "w": 0.607275,
+          "h": 0.334806,
+          "source": "pdf_image_block",
+          "candidate_index": 1
+        }
+      },
+      {
+        "figure_id": "grid/02-industry-codes-00-the-full-grid-code#figure0003",
+        "page": 263,
+        "description": "This figure, titled \"Figure CC.A.3.3 - Interpretation of High Frequency Response Values,\" consists of two vertically stacked time-series plots illustrating plant response to a high-frequency event in a power system. The top plot shows Frequency Change (Hz) on the vertical axis versus time on the horizontal axis. It depicts a linear increase from 0 Hz to +0.5 Hz over the first 10 seconds, then remains constant at +0.5 Hz thereafter. The bottom plot shows Plant Response (MW) on the vertical axis versus time. It starts at an initial high value, then decreases sharply over the first 10 seconds by an amount labeled \"H,\" reaching a lower steady-state level that persists over time. A vertical dashed line at 10 seconds marks the transition point on both plots, aligning the frequency step completion with the plant response change. The figure demonstrates how generating plant is expected to reduce output (by H MW) in response to a +0.5 Hz frequency rise within 10 seconds, illustrating high-frequency response requirements in the Grid Code. The accompanying table in the parsed context specifies the time points (0s, 10s, and ongoing time), frequency changes (0, +0.5 Hz), and plant response values (0, H MW), providing the numeric interpretation of the graphical relationship.",
+        "image_path": "figures/grid/02-industry-codes-00-the-full-grid-code/page-0263-figure-02.jpg",
+        "image_sha256": "9683800c1536b9e4b2c39c761101660d0cdfa8346680c424703d376d2746a0ce",
+        "filename": "page-0263-figure-02.jpg",
+        "content_type": "image/jpeg",
+        "size_bytes": 26173,
+        "category": "figure_crop",
+        "start_char": 5912,
+        "end_char": 7334,
+        "bbox": {
+          "unit": "page_fraction",
+          "x": 0.221522,
+          "y": 0.446978,
+          "w": 0.604671,
+          "h": 0.329473,
+          "source": "pdf_image_block",
+          "candidate_index": 2
+        }
+      },
+      {
+        "figure_id": "grid/02-industry-codes-00-the-full-grid-code#figure0004",
+        "page": 264,
+        "description": "This figure illustrates a typical voltage recovery profile for a short-circuit fault at Supergrid Voltage (400/275 kV) on the Onshore Transmission System cleared in less than 140 milliseconds by two circuit breakers (2-ended circuit). The top portion shows a simple one-line diagram of a 400/275 kV transmission line with circuit breakers at both ends. The bottom plot displays voltage (U/Un, normalized to nominal voltage) versus time, showing the fault ride-through requirement defined in CC.6.3.15.1(a)(i). The voltage profile starts at 100%, drops to 0% at fault inception, remains at 0% until 80ms when the first breaker clears, jumps to approximately 50% voltage, then rises to approximately 80% at 120ms when the second breaker clears, and gradually recovers toward 90% thereafter. A horizontal dashed line at 90% marks the target recovery level. The annotation \"Indicative Voltage and Time Durations\" with a vertical dashed line at 120ms emphasizes the critical clearing time. This figure provides a concrete example of the fault ride-through capability that generating units, power park modules, and DC converters must withstand when connected to the transmission system, demonstrating the stepwise voltage recovery characteristic of sequential breaker operation in a two-ended fault scenario.",
+        "image_path": "figures/grid/02-industry-codes-00-the-full-grid-code/page-0264-figure-01.jpg",
+        "image_sha256": "7b02a310f97e3dd4c988799de5e199cf364788008e1cf4effefb6c78c735fed1",
+        "filename": "page-0264-figure-01.jpg",
+        "content_type": "image/jpeg",
+        "size_bytes": 36296,
+        "category": "figure_crop",
+        "start_char": 9458,
+        "end_char": 10901,
+        "bbox": {
+          "unit": "page_fraction",
+          "x": 0.191868,
+          "y": 0.498598,
+          "w": 0.699261,
+          "h": 0.319924,
+          "source": "pdf_image_block",
+          "candidate_index": 1
+        }
+      }
+    ]
+  }
+}

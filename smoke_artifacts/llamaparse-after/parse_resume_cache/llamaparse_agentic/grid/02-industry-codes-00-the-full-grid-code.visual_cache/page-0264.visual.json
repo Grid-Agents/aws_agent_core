@@ -1,0 +1,35 @@
+{
+  "version": 3,
+  "page": 264,
+  "markdown_sha256": "740b15afa037f3f5503bf19667b02415f65894956af848c97e2fa77082242e6c",
+  "context_sha256": "32e1ad42bc58520d66da5b5707010b197d891fc47cbdd9490707fab7e025846c",
+  "render_dpi": 150,
+  "max_render_width": 1600,
+  "artifacts": [
+    {
+      "page": 264,
+      "description": "This figure illustrates a typical voltage recovery profile for a short-circuit fault at Supergrid Voltage (400/275 kV) on the Onshore Transmission System cleared in less than 140 milliseconds by two circuit breakers (2-ended circuit). The top portion shows a simple one-line diagram of a 400/275 kV transmission line with circuit breakers at both ends. The bottom plot displays voltage (U/Un, normalized to nominal voltage) versus time, showing the fault ride-through requirement defined in CC.6.3.15.1(a)(i). The voltage profile starts at 100%, drops to 0% at fault inception, remains at 0% until 80ms when the first breaker clears, jumps to approximately 50% voltage, then rises to approximately 80% at 120ms when the second breaker clears, and gradually recovers toward 90% thereafter. A horizontal dashed line at 90% marks the target recovery level. The annotation \"Indicative Voltage and Time Durations\" with a vertical dashed line at 120ms emphasizes the critical clearing time. This figure provides a concrete example of the fault ride-through capability that generating units, power park modules, and DC converters must withstand when connected to the transmission system, demonstrating the stepwise voltage recovery characteristic of sequential breaker operation in a two-ended fault scenario.",
+      "image_path": "figures/grid/02-industry-codes-00-the-full-grid-code/page-0264-figure-01.jpg",
+      "image_sha256": "7b02a310f97e3dd4c988799de5e199cf364788008e1cf4effefb6c78c735fed1",
+      "filename": "page-0264-figure-01.jpg",
+      "content_type": "image/jpeg",
+      "size_bytes": 36296,
+      "category": "figure_crop",
+      "bbox": {
+        "unit": "page_fraction",
+        "x": 0.191868,
+        "y": 0.498598,
+        "w": 0.699261,
+        "h": 0.319924,
+        "source": "pdf_image_block",
+        "candidate_index": 1
+      }
+    }
+  ],
+  "raw_responses": [
+    {
+      "candidate_index": 1,
+      "raw_response": "```json\n{\n  \"material_figure\": true,\n  \"figure_type\": \"voltage recovery plot with system diagram\",\n  \"description\": \"This figure illustrates a typical voltage recovery profile for a short-circuit fault at Supergrid Voltage (400/275 kV) on the Onshore Transmission System cleared in less than 140 milliseconds by two circuit breakers (2-ended circuit). The top portion shows a simple one-line diagram of a 400/275 kV transmission line with circuit breakers at both ends. The bottom plot displays voltage (U/Un, normalized to nominal voltage) versus time, showing the fault ride-through requirement defined in CC.6.3.15.1(a)(i). The voltage profile starts at 100%, drops to 0% at fault inception, remains at 0% until 80ms when the first breaker clears, jumps to approximately 50% voltage, then rises to approximately 80% at 120ms when the second breaker clears, and gradually recovers toward 90% thereafter. A horizontal dashed line at 90% marks the target recovery level. The annotation \\\"Indicative Voltage and Time Durations\\\" with a vertical dashed line at 120ms emphasizes the critical clearing time. This figure provides a concrete example of the fault ride-through capability that generating units, power park modules, and DC converters must withstand when connected to the transmission system, demonstrating the stepwise voltage recovery characteristic of sequential breaker operation in a two-ended fault scenario.\"\n}\n```"
+    }
+  ]
+}

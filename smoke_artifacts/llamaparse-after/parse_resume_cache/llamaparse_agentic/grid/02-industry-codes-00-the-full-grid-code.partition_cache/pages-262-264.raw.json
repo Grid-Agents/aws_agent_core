@@ -1,0 +1,755 @@
+{
+  "job": {
+    "id": "pjb-nynjnncectcofppvtmxcwgoom1pm",
+    "project_id": "77e7360e-9ea6-4376-894f-c309edb1af6c",
+    "status": "COMPLETED",
+    "created_at": "2026-06-03T08:22:31.964076Z",
+    "error_message": null,
+    "name": "00_The_Full_Grid_Code.pages-262-264.pdf",
+    "updated_at": "2026-06-03T08:22:51.705396Z",
+    "tier": "agentic"
+  },
+  "images_content_metadata": null,
+  "items": {
+    "pages": [
+      {
+        "items": [
+          {
+            "md": "<u>Figure CC.A.3.1 - Minimum Frequency Response Requirement Profile for a 0.5 Hz frequency change from Target Frequency</u>",
+            "value": "<u>Figure CC.A.3.1 - Minimum Frequency Response Requirement Profile for a 0.5 Hz frequency change from Target Frequency</u>",
+            "bbox": [
+              {
+                "h": 23.848294171589185,
+                "w": 482.9747043635672,
+                "x": 41.89695188643293,
+                "y": 55.76016091606326,
+                "confidence": 0.91,
+                "end_index": 122,
+                "label": "caption",
+                "start_index": 0
+              }
+            ],
+            "type": "text"
+          },
+          {
+            "csv": "\"Loading (% on RC)\",\"Primary / Secondary (% on RC)\",\"High (% on RC)\",\"Plant dependent requirement (% on RC)\"\n\"50\",,\"0.00\",\n\"55\",\"10.00\",\"0.00\",\n\"60\",\"10.00\",\"-3.33\",\n\"65\",\"10.00\",\"-6.67\",\n\"70\",\"10.00\",\"-10.00\",\n\"75\",\"10.00\",\"-10.00\",\n\"80\",\"10.00\",\"-10.00\",\n\"85\",\"7.50\",\"-10.00\",\n\"90\",\"5.00\",\"-10.00\",\n\"95\",\"2.50\",\"-10.00\",\n\"100\",\"0.00\",\"-5.00\",\"0.00\"",
+            "html": "<table>\n  <thead>\n    <tr>\n        <th>Loading (% on RC)</th>\n        <th>Primary / Secondary (% on RC)</th>\n        <th>High (% on RC)</th>\n        <th>Plant dependent requirement (% on RC)</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n        <td>50</td>\n        <td> </td>\n        <td>0.00</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>55</td>\n        <td>10.00</td>\n        <td>0.00</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>60</td>\n        <td>10.00</td>\n        <td>-3.33</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>65</td>\n        <td>10.00</td>\n        <td>-6.67</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>70</td>\n        <td>10.00</td>\n        <td>-10.00</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>75</td>\n        <td>10.00</td>\n        <td>-10.00</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>80</td>\n        <td>10.00</td>\n        <td>-10.00</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>85</td>\n        <td>7.50</td>\n        <td>-10.00</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>90</td>\n        <td>5.00</td>\n        <td>-10.00</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>95</td>\n        <td>2.50</td>\n        <td>-10.00</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>100</td>\n        <td>0.00</td>\n        <td>-5.00</td>\n        <td>0.00</td>\n    </tr>\n  </tbody>\n</table>",
+            "md": "| Loading (% on RC) | Primary / Secondary (% on RC) | High (% on RC) | Plant dependent requirement (% on RC) |\n| ----------------- | ----------------------------- | -------------- | ------------------------------------- |\n| 50                |                               | 0.00           |                                       |\n| 55                | 10.00                         | 0.00           |                                       |\n| 60                | 10.00                         | -3.33          |                                       |\n| 65                | 10.00                         | -6.67          |                                       |\n| 70                | 10.00                         | -10.00         |                                       |\n| 75                | 10.00                         | -10.00         |                                       |\n| 80                | 10.00                         | -10.00         |                                       |\n| 85                | 7.50                          | -10.00         |                                       |\n| 90                | 5.00                          | -10.00         |                                       |\n| 95                | 2.50                          | -10.00         |                                       |\n| 100               | 0.00                          | -5.00          | 0.00                                  |",
+            "rows": [
+              [
+                "Loading (% on RC)",
+                "Primary / Secondary (% on RC)",
+                "High (% on RC)",
+                "Plant dependent requirement (% on RC)"
+              ],
+              [
+                "50",
+                "",
+                "0.00",
+                ""
+              ],
+              [
+                "55",
+                "10.00",
+                "0.00",
+                ""
+              ],
+              [
+                "60",
+                "10.00",
+                "-3.33",
+                ""
+              ],
+              [
+                "65",
+                "10.00",
+                "-6.67",
+                ""
+              ],
+              [
+                "70",
+                "10.00",
+                "-10.00",
+                ""
+              ],
+              [
+                "75",
+                "10.00",
+                "-10.00",
+                ""
+              ],
+              [
+                "80",
+                "10.00",
+                "-10.00",
+                ""
+              ],
+              [
+                "85",
+                "7.50",
+                "-10.00",
+                ""
+              ],
+              [
+                "90",
+                "5.00",
+                "-10.00",
+                ""
+              ],
+              [
+                "95",
+                "2.50",
+                "-10.00",
+                ""
+              ],
+              [
+                "100",
+                "0.00",
+                "-5.00",
+                "0.00"
+              ]
+            ],
+            "bbox": [
+              {
+                "h": 400.24874594131103,
+                "w": 521.0384719893294,
+                "x": 42.19373494664635,
+                "y": 107.77198656631097,
+                "confidence": 0.82,
+                "end_index": 1441,
+                "label": "chart",
+                "start_index": 0
+              }
+            ],
+            "merged_from_pages": null,
+            "merged_into_page": null,
+            "parse_concerns": [
+              {
+                "details": "layout detected [footer, caption, chart, text] but no table/form",
+                "type": "layout_lvm_disagreement"
+              }
+            ],
+            "type": "table"
+          },
+          {
+            "md": "**RC - Registered Capacity**\n**MG - Minimum Generation**\n**DMOL - Designed Minimum Operating Level**",
+            "value": "RC - Registered Capacity\nMG - Minimum Generation\nDMOL - Designed Minimum Operating Level",
+            "bbox": [
+              {
+                "h": 29.337304401676874,
+                "w": 173.7126319550305,
+                "x": 109.46095569740855,
+                "y": 473.89473738567074,
+                "confidence": 0.77,
+                "end_index": 99,
+                "label": "text",
+                "start_index": 0
+              }
+            ],
+            "type": "text"
+          },
+          {
+            "items": [
+              {
+                "md": "Issue 6 Revision 32\nCC\n74 of 101\n19 May 2025",
+                "value": "Issue 6 Revision 32\nCC\n74 of 101\n19 May 2025",
+                "bbox": [
+                  {
+                    "h": 7.085752248475645,
+                    "w": 69.79599938071648,
+                    "x": 42.260016053734766,
+                    "y": 794.2674663681403,
+                    "confidence": 0.84,
+                    "end_index": 18,
+                    "label": "footer",
+                    "start_index": 0
+                  },
+                  {
+                    "h": 7.160601391006089,
+                    "w": 11.24500781250001,
+                    "x": 277.50489386432935,
+                    "y": 794.029282660061,
+                    "confidence": 0.62,
+                    "end_index": 21,
+                    "label": "footer",
+                    "start_index": 20
+                  },
+                  {
+                    "h": 8.687564005335362,
+                    "w": 45.904112423780475,
+                    "x": 478.43570007621963,
+                    "y": 793.9120206745428,
+                    "confidence": 0.81,
+                    "end_index": 43,
+                    "label": "footer",
+                    "start_index": 33
+                  }
+                ],
+                "type": "text"
+              }
+            ],
+            "md": "Issue 6 Revision 32\nCC\n74 of 101\n19 May 2025",
+            "bbox": [
+              {
+                "h": 8.69,
+                "w": 482.08,
+                "x": 42.26,
+                "y": 793.91,
+                "confidence": null,
+                "end_index": null,
+                "label": null,
+                "start_index": null
+              }
+            ],
+            "type": "footer"
+          }
+        ],
+        "page_height": 841.92,
+        "page_number": 1,
+        "page_width": 595.2,
+        "success": true
+      },
+      {
+        "items": [
+          {
+            "md": "<u>Figure CC.A.3.2 - Interpretation of Primary and Secondary Response Values</u>",
+            "value": "<u>Figure CC.A.3.2 - Interpretation of Primary and Secondary Response Values</u>",
+            "bbox": [
+              {
+                "h": 10.576765386814023,
+                "w": 340.05514681783546,
+                "x": 141.15992063643296,
+                "y": 56.068299495045736,
+                "confidence": 0.85,
+                "end_index": 79,
+                "label": "caption",
+                "start_index": 0
+              }
+            ],
+            "type": "text"
+          },
+          {
+            "csv": "\"Time\",\"Frequency Change (Hz)\",\"Plant Response (MW)\"\n\"0s\",\"0\",\"0\"\n\"10s\",\"-0.5 (P)\",\"P\"\n\"30s\",\"-0.5\",\n\"30 min\",\"-0.5\",\"S\"",
+            "html": "<table>\n  <thead>\n    <tr>\n        <th>Time</th>\n        <th>Frequency Change (Hz)</th>\n        <th>Plant Response (MW)</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n        <td>0s</td>\n        <td>0</td>\n        <td>0</td>\n    </tr>\n    <tr>\n        <td>10s</td>\n        <td>-0.5 (P)</td>\n        <td>P</td>\n    </tr>\n    <tr>\n        <td>30s</td>\n        <td>-0.5</td>\n        <td> </td>\n    </tr>\n    <tr>\n        <td>30 min</td>\n        <td>-0.5</td>\n        <td>S</td>\n    </tr>\n  </tbody>\n</table>",
+            "md": "| Time   | Frequency Change (Hz) | Plant Response (MW) |\n| ------ | --------------------- | ------------------- |\n| 0s     | 0                     | 0                   |\n| 10s    | -0.5 (P)              | P                   |\n| 30s    | -0.5                  |                     |\n| 30 min | -0.5                  | S                   |",
+            "rows": [
+              [
+                "Time",
+                "Frequency Change (Hz)",
+                "Plant Response (MW)"
+              ],
+              [
+                "0s",
+                "0",
+                "0"
+              ],
+              [
+                "10s",
+                "-0.5 (P)",
+                "P"
+              ],
+              [
+                "30s",
+                "-0.5",
+                ""
+              ],
+              [
+                "30 min",
+                "-0.5",
+                "S"
+              ]
+            ],
+            "bbox": [
+              {
+                "h": 260.9241985947027,
+                "w": 348.7690944169208,
+                "x": 137.98751838795735,
+                "y": 78.38967491901677,
+                "confidence": 0.99,
+                "end_index": 340,
+                "label": "chart",
+                "start_index": 0
+              }
+            ],
+            "merged_from_pages": null,
+            "merged_into_page": null,
+            "parse_concerns": [
+              {
+                "details": "col 0 'Time' expects datetime, got '0s' in row 1",
+                "type": "header_value_type_mismatch"
+              },
+              {
+                "details": "layout detected [chart, footer, caption] but no table/form",
+                "type": "layout_lvm_disagreement"
+              },
+              {
+                "details": "2 tables on page",
+                "type": "multi_table_page"
+              }
+            ],
+            "type": "table"
+          },
+          {
+            "md": "<u>Figure CC.A.3.3 - Interpretation of High Frequency Response Values</u>",
+            "value": "<u>Figure CC.A.3.3 - Interpretation of High Frequency Response Values</u>",
+            "bbox": [
+              {
+                "h": 10.547286956936007,
+                "w": 305.7701864519818,
+                "x": 141.01978267911588,
+                "y": 364.7246811356707,
+                "confidence": 0.95,
+                "end_index": 72,
+                "label": "caption",
+                "start_index": 0
+              }
+            ],
+            "type": "text"
+          },
+          {
+            "csv": "\"Time\",\"Frequency Change (Hz)\",\"Plant Response (MW)\"\n\"0s\",\"0\",\"0\"\n\"10s\",\"+0.5 (H)\",\"H\"\n\"time\",\"+0.5\",",
+            "html": "<table>\n  <thead>\n    <tr>\n        <th>Time</th>\n        <th>Frequency Change (Hz)</th>\n        <th>Plant Response (MW)</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n        <td>0s</td>\n        <td>0</td>\n        <td>0</td>\n    </tr>\n    <tr>\n        <td>10s</td>\n        <td>+0.5 (H)</td>\n        <td>H</td>\n    </tr>\n    <tr>\n        <td>time</td>\n        <td>+0.5</td>\n        <td> </td>\n    </tr>\n  </tbody>\n</table>",
+            "md": "| Time | Frequency Change (Hz) | Plant Response (MW) |\n| ---- | --------------------- | ------------------- |\n| 0s   | 0                     | 0                   |\n| 10s  | +0.5 (H)              | H                   |\n| time | +0.5                  |                     |",
+            "rows": [
+              [
+                "Time",
+                "Frequency Change (Hz)",
+                "Plant Response (MW)"
+              ],
+              [
+                "0s",
+                "0",
+                "0"
+              ],
+              [
+                "10s",
+                "+0.5 (H)",
+                "H"
+              ],
+              [
+                "time",
+                "+0.5",
+                ""
+              ]
+            ],
+            "bbox": [
+              {
+                "h": 255.26512965891774,
+                "w": 348.7623958650916,
+                "x": 138.11323142149394,
+                "y": 387.3901094416921,
+                "confidence": 0.99,
+                "end_index": 273,
+                "label": "chart",
+                "start_index": 0
+              }
+            ],
+            "merged_from_pages": null,
+            "merged_into_page": null,
+            "parse_concerns": [
+              {
+                "details": "col 0 'Time' expects datetime, got '0s' in row 1",
+                "type": "header_value_type_mismatch"
+              },
+              {
+                "details": "layout detected [chart, footer, caption] but no table/form",
+                "type": "layout_lvm_disagreement"
+              },
+              {
+                "details": "2 tables on page",
+                "type": "multi_table_page"
+              }
+            ],
+            "type": "table"
+          },
+          {
+            "items": [
+              {
+                "md": "Issue 6 Revision 32\nCC\n75 of 101\n19 May 2025",
+                "value": "Issue 6 Revision 32\nCC\n75 of 101\n19 May 2025",
+                "bbox": [
+                  {
+                    "h": 7.037574066310888,
+                    "w": 69.99993306974086,
+                    "x": 70.59102710556404,
+                    "y": 794.2812530487805,
+                    "confidence": 0.87,
+                    "end_index": 18,
+                    "label": "footer",
+                    "start_index": 0
+                  },
+                  {
+                    "h": 7.210584375,
+                    "w": 11.237334603658503,
+                    "x": 305.8971310975611,
+                    "y": 794.1056358041159,
+                    "confidence": 0.66,
+                    "end_index": 21,
+                    "label": "footer",
+                    "start_index": 20
+                  },
+                  {
+                    "h": 8.61983380335375,
+                    "w": 45.71892759146345,
+                    "x": 506.81161623475623,
+                    "y": 794.0966619283537,
+                    "confidence": 0.85,
+                    "end_index": 43,
+                    "label": "footer",
+                    "start_index": 33
+                  }
+                ],
+                "type": "text"
+              }
+            ],
+            "md": "Issue 6 Revision 32\nCC\n75 of 101\n19 May 2025",
+            "bbox": [
+              {
+                "h": 8.62,
+                "w": 481.94,
+                "x": 70.59,
+                "y": 794.1,
+                "confidence": null,
+                "end_index": null,
+                "label": null,
+                "start_index": null
+              }
+            ],
+            "type": "footer"
+          }
+        ],
+        "page_height": 841.92,
+        "page_number": 2,
+        "page_width": 595.2,
+        "success": true
+      },
+      {
+        "items": [
+          {
+            "level": 1,
+            "md": "# APPENDIX 4 - FAULT RIDE THROUGH REQUIREMENTS",
+            "value": "APPENDIX 4 - FAULT RIDE THROUGH REQUIREMENTS",
+            "bbox": [
+              {
+                "h": 12.14435484232088,
+                "w": 370.44908145960375,
+                "x": 98.07254925685979,
+                "y": 57.0474107540968,
+                "confidence": 0.93,
+                "end_index": 45,
+                "label": "paragraph_title",
+                "start_index": 0
+              }
+            ],
+            "type": "heading"
+          },
+          {
+            "level": 1,
+            "md": "# APPENDIX 4A - FAULT RIDE THROUGH REQUIREMENTS FOR ONSHORE SYNCHRONOUS GENERATING UNITS, ONSHORE POWER PARK MODULES, ONSHORE DC CONVERTERS OTSDUW PLANT AND APPARATUS AT THE INTERFACE POINT, OFFSHORE SYNCHRONOUS GENERATING UNITS IN A LARGE POWER STATION, OFFSHORE POWER PARK MODULES IN A LARGE POWER STATION AND OFFSHORE DC CONVERTERS IN A LARGE POWER STATION WHICH SELECT TO MEET THE FAULT RIDE THROUGH REQUIREMENTS AT THE INTERFACE POINT",
+            "value": "APPENDIX 4A - FAULT RIDE THROUGH REQUIREMENTS FOR ONSHORE SYNCHRONOUS GENERATING UNITS, ONSHORE POWER PARK MODULES, ONSHORE DC CONVERTERS OTSDUW PLANT AND APPARATUS AT THE INTERFACE POINT, OFFSHORE SYNCHRONOUS GENERATING UNITS IN A LARGE POWER STATION, OFFSHORE POWER PARK MODULES IN A LARGE POWER STATION AND OFFSHORE DC CONVERTERS IN A LARGE POWER STATION WHICH SELECT TO MEET THE FAULT RIDE THROUGH REQUIREMENTS AT THE INTERFACE POINT",
+            "bbox": [
+              {
+                "h": 117.202828125,
+                "w": 480.5253425590702,
+                "x": 43.16010294397867,
+                "y": 91.66940677877287,
+                "confidence": 0.93,
+                "end_index": 438,
+                "label": "text",
+                "start_index": 0
+              }
+            ],
+            "type": "heading"
+          },
+          {
+            "md": "**CC.A.4A.1** <u>Scope</u>",
+            "value": "CC.A.4A.1 <u>Scope</u>",
+            "bbox": [
+              {
+                "h": 10.238189576981704,
+                "w": 99.83774614138721,
+                "x": 42.03757274199696,
+                "y": 225.5881465129573,
+                "confidence": 0.87,
+                "end_index": 25,
+                "label": "paragraph_title",
+                "start_index": 0
+              }
+            ],
+            "type": "text"
+          },
+          {
+            "md": "The fault ride through requirement is defined in CC.6.3.15.1 (a), (b) and CC.6.3.15.3. This Appendix provides illustrations by way of examples only of CC.6.3.15.1 (a) (i) and further background and illustrations to CC.6.3.15.1 (1b) (i) and CC.6.3.15.1 (2b) (i) and is not intended to show all possible permutations.",
+            "value": "The fault ride through requirement is defined in CC.6.3.15.1 (a), (b) and CC.6.3.15.3. This Appendix provides illustrations by way of examples only of CC.6.3.15.1 (a) (i) and further background and illustrations to CC.6.3.15.1 (1b) (i) and CC.6.3.15.1 (2b) (i) and is not intended to show all possible permutations.",
+            "bbox": [
+              {
+                "h": 48.939006402439055,
+                "w": 413.5420792682928,
+                "x": 112.38550266768296,
+                "y": 244.15737653391767,
+                "confidence": 0.98,
+                "end_index": 314,
+                "label": "text",
+                "start_index": 0
+              }
+            ],
+            "type": "text"
+          },
+          {
+            "md": "**CC.A.4A.2** <u>Short Circuit Faults At Supergrid Voltage On The Onshore Transmission System Up To 140ms In Duration</u>",
+            "value": "CC.A.4A.2 <u>Short Circuit Faults At Supergrid Voltage On The Onshore Transmission System Up To 140ms In Duration</u>",
+            "bbox": [
+              {
+                "h": 23.19177870617383,
+                "w": 484.56884451219526,
+                "x": 41.957708460365865,
+                "y": 313.3105895579268,
+                "confidence": 0.88,
+                "end_index": 120,
+                "label": "paragraph_title",
+                "start_index": 0
+              }
+            ],
+            "type": "text"
+          },
+          {
+            "md": "For short circuit faults at **Supergrid Voltage** on the **Onshore Transmission System** (which could be at an **Interface Point**) up to 140ms in duration, the fault ride through requirement is defined in CC.6.3.15.1 (a) (i). Figures CC.A.4A.1 (a) and (b) illustrate two typical examples of voltage recovery for short-circuit faults cleared within 140ms by two circuit breakers (a) and three circuit breakers (b) respectively.",
+            "value": "For short circuit faults at Supergrid Voltage on the Onshore Transmission System (which could be at an Interface Point) up to 140ms in duration, the fault ride through requirement is defined in CC.6.3.15.1 (a) (i). Figures CC.A.4A.1 (a) and (b) illustrate two typical examples of voltage recovery for short-circuit faults cleared within 140ms by two circuit breakers (a) and three circuit breakers (b) respectively.",
+            "bbox": [
+              {
+                "h": 61.759441263338466,
+                "w": 413.7085772675306,
+                "x": 112.66330649771344,
+                "y": 344.64505758384144,
+                "confidence": 0.99,
+                "end_index": 426,
+                "label": "text",
+                "start_index": 0
+              }
+            ],
+            "type": "text"
+          },
+          {
+            "csv": "\"Time\",\"Voltage (%)\"\n\"0\",\"100\"\n\"0\",\"0\"\n\"80ms\",\"0\"\n\"80ms\",\"50\"\n\"120ms\",\"50\"\n\"120ms\",\"80\"\n\"Time\",\"90\"",
+            "html": "<table>\n  <thead>\n    <tr>\n        <th>Time</th>\n        <th>Voltage (%)</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n        <td>0</td>\n        <td>100</td>\n    </tr>\n    <tr>\n        <td>0</td>\n        <td>0</td>\n    </tr>\n    <tr>\n        <td>80ms</td>\n        <td>0</td>\n    </tr>\n    <tr>\n        <td>80ms</td>\n        <td>50</td>\n    </tr>\n    <tr>\n        <td>120ms</td>\n        <td>50</td>\n    </tr>\n    <tr>\n        <td>120ms</td>\n        <td>80</td>\n    </tr>\n    <tr>\n        <td>Time</td>\n        <td>90</td>\n    </tr>\n  </tbody>\n</table>",
+            "md": "| Time  | Voltage (%) |\n| ----- | ----------- |\n| 0     | 100         |\n| 0     | 0           |\n| 80ms  | 0           |\n| 80ms  | 50          |\n| 120ms | 50          |\n| 120ms | 80          |\n| Time  | 90          |",
+            "rows": [
+              [
+                "Time",
+                "Voltage (%)"
+              ],
+              [
+                "0",
+                "100"
+              ],
+              [
+                "0",
+                "0"
+              ],
+              [
+                "80ms",
+                "0"
+              ],
+              [
+                "80ms",
+                "50"
+              ],
+              [
+                "120ms",
+                "50"
+              ],
+              [
+                "120ms",
+                "80"
+              ],
+              [
+                "Time",
+                "90"
+              ]
+            ],
+            "bbox": [
+              {
+                "h": 214.50049687500007,
+                "w": 357.77832764862814,
+                "x": 128.42623942454273,
+                "y": 426.6236686737805,
+                "confidence": 0.99,
+                "end_index": 214,
+                "label": "chart",
+                "start_index": 0
+              }
+            ],
+            "merged_from_pages": null,
+            "merged_into_page": null,
+            "parse_concerns": [
+              {
+                "details": "col 0 'Time' expects datetime, got '0' in row 1",
+                "type": "header_value_type_mismatch"
+              },
+              {
+                "details": "layout detected [text, chart, footer, paragraph_title, caption] but no table/form",
+                "type": "layout_lvm_disagreement"
+              }
+            ],
+            "type": "table"
+          },
+          {
+            "md": "Typical fault cleared in less than 140ms: 2 ended circuit",
+            "value": "Typical fault cleared in less than 140ms: 2 ended circuit",
+            "bbox": [
+              {
+                "h": 34.798835270579275,
+                "w": 266.4442025533537,
+                "x": 185.86182907774395,
+                "y": 666.2388854039634,
+                "confidence": 0.75,
+                "end_index": 56,
+                "label": "caption",
+                "start_index": 0
+              }
+            ],
+            "type": "text"
+          },
+          {
+            "md": "Figure CC.A.4A.1 (a)",
+            "value": "Figure CC.A.4A.1 (a)",
+            "bbox": [
+              {
+                "h": 9.0,
+                "w": 74.81,
+                "x": 246.1,
+                "y": 691.42,
+                "confidence": 1.0,
+                "end_index": 19,
+                "label": "text",
+                "start_index": 0
+              }
+            ],
+            "type": "text"
+          },
+          {
+            "items": [
+              {
+                "md": "Issue 6 Revision 32\nCC\n76 of 101\n19 May 2025",
+                "value": "Issue 6 Revision 32\nCC\n76 of 101\n19 May 2025",
+                "bbox": [
+                  {
+                    "h": 7.5970125,
+                    "w": 69.93944231135673,
+                    "x": 42.23715591653965,
+                    "y": 794.0855323170732,
+                    "confidence": 0.86,
+                    "end_index": 18,
+                    "label": "footer",
+                    "start_index": 0
+                  },
+                  {
+                    "h": 17.835402610518265,
+                    "w": 32.558736471036575,
+                    "x": 266.7411362423781,
+                    "y": 793.9073582698171,
+                    "confidence": 0.77,
+                    "end_index": 31,
+                    "label": "footer",
+                    "start_index": 20
+                  },
+                  {
+                    "h": 8.799662252286652,
+                    "w": 46.060022103658554,
+                    "x": 478.4044756097562,
+                    "y": 793.8319075266768,
+                    "confidence": 0.84,
+                    "end_index": 43,
+                    "label": "footer",
+                    "start_index": 33
+                  }
+                ],
+                "type": "text"
+              }
+            ],
+            "md": "Issue 6 Revision 32\nCC\n76 of 101\n19 May 2025",
+            "bbox": [
+              {
+                "h": 17.91,
+                "w": 482.23,
+                "x": 42.24,
+                "y": 793.83,
+                "confidence": null,
+                "end_index": null,
+                "label": null,
+                "start_index": null
+              }
+            ],
+            "type": "footer"
+          }
+        ],
+        "page_height": 841.92,
+        "page_number": 3,
+        "page_width": 595.2,
+        "success": true
+      }
+    ]
+  },
+  "markdown": null,
+  "markdown_full": null,
+  "metadata": {
+    "pages": [
+      {
+        "page_number": 1,
+        "confidence": 0.95,
+        "cost_optimized": false,
+        "original_orientation_angle": 0,
+        "printed_page_number": null,
+        "slide_section_name": null,
+        "speaker_notes": null,
+        "triggered_auto_mode": false
+      },
+      {
+        "page_number": 2,
+        "confidence": 0.906,
+        "cost_optimized": false,
+        "original_orientation_angle": 0,
+        "printed_page_number": null,
+        "slide_section_name": null,
+        "speaker_notes": null,
+        "triggered_auto_mode": false
+      },
+      {
+        "page_number": 3,
+        "confidence": 1.0,
+        "cost_optimized": false,
+        "original_orientation_angle": 0,
+        "printed_page_number": null,
+        "slide_section_name": null,
+        "speaker_notes": null,
+        "triggered_auto_mode": false
+      }
+    ]
+  },
+  "raw_parameters": null,
+  "result_content_metadata": null,
+  "text": {
+    "pages": [
+      {
+        "page_number": 1,
+        "text": "<u>Figure CC.A.3.1 - Minimum Frequency Response Requirement Profile for a 0.5 Hz frequency change from </u>\n<u>Target Frequency</u>\n\n12.00\n\n10.00\n\n 8.00\n\n 6.00\n       Dynamic\n 4.00    ing\n        *Zone\n 2.00\n\n 0.00  5b              55  60  65       7b  75  8b  85  gb  95                                             100\n\n-2.00                                   Loading (% on RC)\n\n-4.00                  DMOL\n\n-6.00                                                       *\n\n-8.00\n\n-10.00                         MG\n\n-12.00\n\n RC - Registered Capacity                       - Primary / Secondary\n MG - Minimum Generation                    \u2014 High  ...Plant dependent requirement\n DMol - Designed Minimum Operating Level\n\n\n\n\n\n\n\n\n\n\nIssue 6 Revision 32    CC    19 May 2025\n                   74 of 101"
+      },
+      {
+        "page_number": 2,
+        "text": "<u>Figure CC.A.3.2 - Interpretation of Primary and Secondary Response Values</u>\n20    -0.5 Hz\n\n20    P      Ts\n      10s    30s    time  P 30 min\n\n<u>Figure CC.A.3.3 - Interpretation of High Frequency Response Values</u>\n20    +0.5 Hz\n20    20 H                time\n      10s\n\n\n\n\n\n\n\n\n\n\nIssue 6 Revision 32    CC    19 May 2025\n                   75 of 101"
+      },
+      {
+        "page_number": 3,
+        "text": "             APPENDIX 4 - FAULT RIDE THROUGH REQUIREMENTS\n\nAPPENDIX 4A - FAULT RIDE THROUGH REQUIREMENTS FOR ONSHORE\n                  SYNCHRONOUS GENERATING UNITS, ONSHORE POWER PARK MODULES,\n                   ONSHORE DC CONVERTERS OTSDUW PLANT AND APPARATUS AT THE\n              INTERFACE POINT, OFFSHORE SYNCHRONOUS GENERATING UNITS IN A LARGE\n                 POWER STATION, OFFSHORE POWER PARK MODULES IN A LARGE POWER\n              STATION AND OFFSHORE DC CONVERTERS IN A LARGE POWER STATION WHICH\n                  SELECT TO MEET THE FAULT RIDE THROUGH REQUIREMENTS AT THE\n                                INTERFACE POINT\n\nCC.A.4A.1     <u>Scope</u>\n              The fault ride through requirement is defined in CC.6.3.15.1 (a), (b) and CC.6.3.15.3. This\n              Appendix provides illustrations by way of examples only of CC.6.3.15.1 (a) (i) and further\n              background and illustrations to CC.6.3.15.1 (1b) (i) and CC.6.3.15.1 (2b) (i) and is not intended\n              to show all possible permutations.\n\nCC.A.4A.2     <u>Short Circuit Faults At Supergrid Voltage On The Onshore Transmission System Up To 140ms </u>\n              <u>In Duration</u>\n              For short circuit faults at Supergrid Voltage on the Onshore Transmission System (which\n              could be at an Interface Point) up to 140ms in duration, the fault ride through requirement is\n              defined in CC.6.3.15.1 (a) (i). Figures CC.A.4A.1 (a) and (b) illustrate two typical examples of\n              voltage recovery for short-circuit faults cleared within 140ms by two circuit breakers (a) and\n              three circuit breakers (b) respectively.\n\n                          Supergrid                    400/275k'V    400/275kV\n                          Voltage\n\n                          100%                             }1        x\n                          90%\n              I\n              1\n\n              U/Un\n\n                                       Indicative Voltage\n                                       and Time Durations\n              I\n              I\n              I\n                          0%      0                   I\n                                       80ms           120ms           Time\n\n                                  T ypical fault cleared in less than 14Oms: 2 ended circuit\n\n                                       Figure CC.A.4A.1 (a)\n\n\n\n\n\n\n\nIssue 6 Revision 32    CC    19 May 2025\n                   76 of 101"
+      }
+    ]
+  },
+  "text_full": null,
+  "job_metadata": null,
+  "debug": null,
+  "num_pages": 3,
+  "credits_used": 30,
+  "cost_usd": 0.0375,
+  "cost_per_page_usd": 0.012499999999999999,
+  "job_id": "pjb-nynjnncectcofppvtmxcwgoom1pm"
+}
