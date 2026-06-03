@@ -21,3 +21,4 @@ app/GridAgentCore/*.egg-info/
 app/GridAgentCore/frontend/node_modules/
 app/GridAgentCore/frontend/dist/
 app/GridAgentCore/frontend/coverage/
+.grid_smoke_artifacts/

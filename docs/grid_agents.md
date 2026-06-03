@@ -66,6 +66,13 @@ User
   with page counts, file sizes, relative paths, and source hashes.
 - Parse PDFs into the corpus first. Use `llamaparse-agentic` for image-heavy
   documents and `pypdf` only as the local no-API fallback.
+- When multimodal enrichment is enabled, keep LlamaParse Agentic as the source
+  of truth for tables and text. Send only candidate figure crops to the VLM,
+  reject tables/header/footer/dark/noise crops, inject detailed figure
+  descriptions into the parsed page text, and save only cropped figures under
+  `figures/grid/`.
+- Prefer LlamaParse layout entries labeled as figures when present; otherwise
+  fall back to local PDF image/vector geometry for candidate crops.
 - LlamaParse agentic parsing partitions PDFs larger than
   `LLAMAPARSE_MAX_PAGES_PER_JOB` pages, defaults to 50, and merges parsed
   pages back into the original page numbering.

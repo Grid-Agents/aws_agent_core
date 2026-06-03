@@ -39,8 +39,10 @@ def write_artifact_fixture(tmp_path):
                 filename="gate-2.png",
                 content_type="image/png",
                 size_bytes=8,
+                category="figure_crop",
                 start_char=0,
                 end_char=text.index("[Page 2]"),
+                bbox={"unit": "page_fraction", "x": 0.1, "y": 0.2, "w": 0.7, "h": 0.3},
             )
         ],
     )
@@ -61,6 +63,8 @@ def test_exact_find_returns_normalized_evidence(tmp_path) -> None:
     assert evidence[0].artifact_source == "find"
     assert "land rights" in evidence[0].span_text
     assert evidence[0].metadata["figures"][0]["figure_id"] == "grid/doc#fig0001"
+    assert evidence[0].metadata["figures"][0]["category"] == "figure_crop"
+    assert evidence[0].metadata["figures"][0]["bbox"]["unit"] == "page_fraction"
 
 
 def test_retrieval_adds_s3_figure_uri(tmp_path, monkeypatch) -> None:

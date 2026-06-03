@@ -11,7 +11,7 @@ from grid_agent_core import corpus
 from grid_agent_core import llama_parse_agentic
 from grid_agent_core import multimodal_enrichment
 from grid_agent_core.llama_parse_agentic import LlamaParseResult, ParsedPage
-from grid_agent_core.multimodal_enrichment import VisualArtifact, _clean_description
+from grid_agent_core.multimodal_enrichment import FigureCandidate, VisualArtifact, _clean_description
 
 
 class FakePage:
@@ -116,7 +116,7 @@ def test_build_corpus_can_multimodal_enrich_llamaparse_output(tmp_path, monkeypa
         )
 
     def fake_enrich(_pdf_path, *, parsed_pages, artifact_dir, document_key, **_kwargs):
-        image_path = Path("figures") / "grid" / document_key / "page-0001-visual.jpg"
+        image_path = Path("figures") / "grid" / document_key / "page-0001-figure-01.jpg"
         target = artifact_dir / image_path
         target.parent.mkdir(parents=True)
         target.write_bytes(image_bytes)
@@ -126,9 +126,9 @@ def test_build_corpus_can_multimodal_enrich_llamaparse_output(tmp_path, monkeypa
                     1,
                     (
                         "Base parsed page\n\n"
-                        "### Visual context - page 1\n\n"
+                        "### Figure context - page 1 figure 1\n\n"
                         "The page contains a material connection-process diagram.\n\n"
-                        f"![Page 1 visual context]({image_path.as_posix()})"
+                        f"![Page 1 figure 1]({image_path.as_posix()})"
                     ),
                 )
             ],
@@ -138,9 +138,17 @@ def test_build_corpus_can_multimodal_enrich_llamaparse_output(tmp_path, monkeypa
                     description="The page contains a material connection-process diagram.",
                     image_path=image_path.as_posix(),
                     image_sha256=corpus.sha256_bytes(image_bytes),
-                    filename="page-0001-visual.jpg",
+                    filename="page-0001-figure-01.jpg",
                     content_type="image/jpeg",
                     size_bytes=len(image_bytes),
+                    bbox={
+                        "unit": "page_fraction",
+                        "x": 0.1,
+                        "y": 0.2,
+                        "w": 0.7,
+                        "h": 0.3,
+                        "source": "test",
+                    },
                 )
             ],
         )
@@ -158,18 +166,20 @@ def test_build_corpus_can_multimodal_enrich_llamaparse_output(tmp_path, monkeypa
 
     record = records[0]
     text = (tmp_path / "artifacts" / record.text_path).read_text(encoding="utf-8")
-    assert "### Visual context - page 1" in text
+    assert "### Figure context - page 1 figure 1" in text
     assert "connection-process diagram" in text
     assert len(record.figures) == 1
     assert record.figures[0].description == "The page contains a material connection-process diagram."
-    assert record.figures[0].start_char == record.pages[0].start_char
-    assert record.figures[0].end_char == record.pages[0].end_char
+    assert record.figures[0].category == "figure_crop"
+    assert record.figures[0].bbox["source"] == "test"
+    assert record.pages[0].start_char <= record.figures[0].start_char < record.figures[0].end_char
+    assert record.figures[0].end_char <= record.pages[0].end_char
     assert (tmp_path / "artifacts" / record.figures[0].image_path).read_bytes() == image_bytes
 
 
 def test_multimodal_enrichment_skips_simple_definition_tables() -> None:
     raw = (
-        '{"material_visual_content": true, "description": '
+        '{"material_figure": true, "figure_type": "table", "description": '
         '"The page contains a structured glossary table with term names on the left '
         'and definitions on the right. The table defines key Grid Code terms."}'
     )
@@ -177,23 +187,85 @@ def test_multimodal_enrichment_skips_simple_definition_tables() -> None:
     assert _clean_description(raw) == ""
 
 
+def test_multimodal_enrichment_uses_layout_figures_and_skips_tables_noise() -> None:
+    import fitz
+
+    payload = {
+        "items": {
+            "pages": [
+                {
+                    "page_number": 1,
+                    "layout": [
+                        {
+                            "label": "table",
+                            "bbox": {"x": 0.1, "y": 0.2, "w": 0.7, "h": 0.2},
+                        },
+                        {
+                            "label": "figure",
+                            "isLikelyNoise": True,
+                            "bbox": {"x": 0.1, "y": 0.5, "w": 0.7, "h": 0.2},
+                        },
+                        {
+                            "label": "figure",
+                            "confidence": 0.92,
+                            "bbox": {"x": 0.2, "y": 0.35, "w": 0.55, "h": 0.25},
+                        },
+                    ],
+                }
+            ]
+        }
+    }
+
+    entries = multimodal_enrichment._layout_entries_for_page(payload, 1)
+    candidates = multimodal_enrichment._layout_figure_candidates(
+        entries,
+        page_number=1,
+        page_rect=fitz.Rect(0, 0, 600, 800),
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].source == "llamaparse_layout"
+    assert candidates[0].bbox["source"] == "llamaparse_layout"
+    assert candidates[0].bbox["confidence"] == 0.92
+
+
 def test_multimodal_enrichment_page_cache_resumes_visual_and_skip_pages(
     tmp_path, monkeypatch, capsys
 ) -> None:
     artifact_dir = tmp_path / "artifacts"
     cache_dir = tmp_path / "cache"
-    image_bytes = b"\xff\xd8\xffcached"
+    image_bytes = b"cropped-figure-bytes"
     calls = []
+    candidate = FigureCandidate(
+        page=1,
+        index=1,
+        rect=(10.0, 20.0, 300.0, 180.0),
+        bbox={
+            "unit": "page_fraction",
+            "x": 0.1,
+            "y": 0.2,
+            "w": 0.5,
+            "h": 0.25,
+            "source": "test",
+        },
+        source="test",
+        nearby_text="Figure 1: one-line process diagram caption near the crop.",
+    )
 
     class FakeDescriber:
         def describe_page(self, *, image_bytes, page_number, page_markdown):
             calls.append(page_number)
             if page_number == 1:
+                assert "Document key: doc" in page_markdown
+                assert "Current page parsed markdown" in page_markdown
+                assert "Next page head (page 2)" in page_markdown
+                assert "Figure 1: one-line process diagram caption near the crop." in page_markdown
                 return (
-                    '{"material_visual_content": true, "description": '
-                    '"The page contains a material one-line process diagram."}'
+                    '{"material_figure": true, "figure_type": "one-line diagram", "description": '
+                    '"The crop shows a material one-line process diagram with labeled buses. '
+                    'It shows directional flow between components."}'
                 )
-            return '{"material_visual_content": false, "description": ""}'
+            return '{"material_figure": false, "figure_type": "table", "description": ""}'
 
     class RaisingDescriber:
         def describe_page(self, **_kwargs):
@@ -201,9 +273,15 @@ def test_multimodal_enrichment_page_cache_resumes_visual_and_skip_pages(
 
     monkeypatch.setattr(
         multimodal_enrichment,
-        "render_pdf_page_jpeg",
+        "detect_figure_candidates",
+        lambda _pdf_path, *, page_number, **_kwargs: [candidate] if page_number == 1 else [],
+    )
+    monkeypatch.setattr(
+        multimodal_enrichment,
+        "render_pdf_clip_jpeg",
         lambda *_args, **_kwargs: image_bytes,
     )
+    monkeypatch.setattr(multimodal_enrichment, "_crop_has_visual_signal", lambda _bytes: True)
     parsed_pages = [(1, "Base visual page"), (2, "Plain definition page")]
 
     enriched, artifacts = multimodal_enrichment.enrich_page_markdown_with_visuals(
@@ -216,10 +294,14 @@ def test_multimodal_enrichment_page_cache_resumes_visual_and_skip_pages(
         show_progress=True,
     )
 
-    assert sorted(calls) == [1, 2]
+    assert sorted(calls) == [1]
     assert len(artifacts) == 1
-    assert "### Visual context - page 1" in enriched[0][1]
-    assert "### Visual context" not in enriched[1][1]
+    assert artifacts[0].filename == "page-0001-figure-01.jpg"
+    assert not (artifact_dir / "figures" / "grid" / "doc" / "page-0001-visual.jpg").exists()
+    assert artifacts[0].bbox["source"] == "test"
+    assert artifacts[0].category == "figure_crop"
+    assert "### Figure context - page 1 figure 1" in enriched[0][1]
+    assert "### Figure context" not in enriched[1][1]
     assert "VLM visual enrichment" in capsys.readouterr().err
 
     cached_enriched, cached_artifacts = multimodal_enrichment.enrich_page_markdown_with_visuals(
@@ -250,8 +332,8 @@ def test_multimodal_enrichment_runs_vlm_pages_in_parallel(tmp_path, monkeypatch)
             try:
                 time.sleep(0.05)
                 return (
-                    '{"material_visual_content": true, "description": '
-                    f'"The page contains material diagram {page_number}."}}'
+                    '{"material_figure": true, "figure_type": "diagram", "description": '
+                    f'"The crop contains material diagram {page_number}. It shows labeled components."}}'
                 )
             finally:
                 with lock:
@@ -259,9 +341,23 @@ def test_multimodal_enrichment_runs_vlm_pages_in_parallel(tmp_path, monkeypatch)
 
     monkeypatch.setattr(
         multimodal_enrichment,
-        "render_pdf_page_jpeg",
+        "detect_figure_candidates",
+        lambda _pdf_path, *, page_number, **_kwargs: [
+            FigureCandidate(
+                page=page_number,
+                index=1,
+                rect=(10.0, 20.0, 300.0, 180.0),
+                bbox={"unit": "page_fraction", "source": "test"},
+                source="test",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        multimodal_enrichment,
+        "render_pdf_clip_jpeg",
         lambda *_args, **_kwargs: b"\xff\xd8\xffparallel",
     )
+    monkeypatch.setattr(multimodal_enrichment, "_crop_has_visual_signal", lambda _bytes: True)
 
     enriched, artifacts = multimodal_enrichment.enrich_page_markdown_with_visuals(
         tmp_path / "doc.pdf",
@@ -291,8 +387,8 @@ def test_multimodal_enrichment_respects_shared_vlm_limiter(tmp_path, monkeypatch
             try:
                 time.sleep(0.02)
                 return (
-                    '{"material_visual_content": true, "description": '
-                    f'"The page contains material diagram {page_number}."}}'
+                    '{"material_figure": true, "figure_type": "diagram", "description": '
+                    f'"The crop contains material diagram {page_number}. It shows labeled components."}}'
                 )
             finally:
                 with lock:
@@ -300,9 +396,23 @@ def test_multimodal_enrichment_respects_shared_vlm_limiter(tmp_path, monkeypatch
 
     monkeypatch.setattr(
         multimodal_enrichment,
-        "render_pdf_page_jpeg",
+        "detect_figure_candidates",
+        lambda _pdf_path, *, page_number, **_kwargs: [
+            FigureCandidate(
+                page=page_number,
+                index=1,
+                rect=(10.0, 20.0, 300.0, 180.0),
+                bbox={"unit": "page_fraction", "source": "test"},
+                source="test",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        multimodal_enrichment,
+        "render_pdf_clip_jpeg",
         lambda *_args, **_kwargs: b"\xff\xd8\xfflimited",
     )
+    monkeypatch.setattr(multimodal_enrichment, "_crop_has_visual_signal", lambda _bytes: True)
 
     enriched, artifacts = multimodal_enrichment.enrich_page_markdown_with_visuals(
         tmp_path / "doc.pdf",
@@ -319,7 +429,7 @@ def test_multimodal_enrichment_respects_shared_vlm_limiter(tmp_path, monkeypatch
     assert [artifact.page for artifact in artifacts] == [1, 2, 3]
 
 
-def test_anthropic_vision_describer_uses_direct_api_and_model_max_tokens(monkeypatch) -> None:
+def test_anthropic_vision_describer_uses_direct_api_and_caps_model_max_tokens(monkeypatch) -> None:
     captured = {}
 
     class FakeModelInfo:
@@ -373,7 +483,7 @@ def test_anthropic_vision_describer_uses_direct_api_and_model_max_tokens(monkeyp
     assert captured["model_lookup"] == "claude-sonnet-4-5-20250929"
     request = captured["request"]
     assert request["model"] == "claude-sonnet-4-5-20250929"
-    assert request["max_tokens"] == 64000
+    assert request["max_tokens"] == 4096
     assert request["temperature"] == 0
     content = request["messages"][0]["content"]
     assert content[0]["type"] == "image"
