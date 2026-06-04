@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import sys
+import types
+
+import numpy as np
+
 from grid_agent_core.corpus import write_manifest
 from grid_agent_core.indexes import build_pageindex, build_vector_index
 from grid_agent_core.models import DocumentRecord, FigureRecord, PageRecord
+from grid_agent_core.rag_compat.llm import FakeLLM
 from grid_agent_core.retrieval import GridRetrievalRepository
 
 
@@ -80,9 +86,18 @@ def test_retrieval_adds_s3_figure_uri(tmp_path, monkeypatch) -> None:
     assert figure["s3_uri"] == "s3://bucket/prefix/figures/grid/doc/gate-2.png"
 
 
-def test_vector_and_pageindex_indexes_are_queryable(tmp_path) -> None:
+def test_vector_and_pageindex_indexes_are_queryable(tmp_path, monkeypatch) -> None:
+    _install_fake_sentence_transformers(monkeypatch)
+    monkeypatch.setenv("GRID_VECTOR_RERANKER_ENABLED", "0")
+    monkeypatch.setenv("GRID_PAGEINDEX_BUILD_WITH_LLM", "0")
+    monkeypatch.setattr("grid_agent_core.indexes.make_pageindex_llm", lambda _cfg: FakeLLM("{}"))
     artifact_dir = write_artifact_fixture(tmp_path)
-    build_vector_index(artifact_dir)
+
+    build_vector_index(
+        artifact_dir,
+        provider="sentence_transformers",
+        chunk_strategy="fixed",
+    )
     build_pageindex(artifact_dir)
     repo = GridRetrievalRepository(artifact_dir)
 
@@ -91,3 +106,38 @@ def test_vector_and_pageindex_indexes_are_queryable(tmp_path) -> None:
 
     assert vector[0].artifact_source == "vector"
     assert pageindex[0].artifact_source == "pageindex"
+
+
+def _install_fake_sentence_transformers(monkeypatch) -> None:
+    module = types.ModuleType("sentence_transformers")
+
+    class SentenceTransformer:
+        def __init__(self, _model_name: str):
+            pass
+
+        def encode(self, texts, **_kwargs):
+            rows = []
+            for text in texts:
+                lowered = str(text).casefold()
+                rows.append(
+                    [
+                        float("readiness" in lowered or "evidence" in lowered),
+                        float("queue" in lowered or "cndm" in lowered),
+                        float("gate" in lowered),
+                        1.0,
+                    ]
+                )
+            values = np.asarray(rows, dtype=np.float32)
+            norms = np.linalg.norm(values, axis=1, keepdims=True)
+            return values / np.maximum(norms, 1e-12)
+
+    class CrossEncoder:
+        def __init__(self, _model_name: str):
+            pass
+
+        def predict(self, pairs):
+            return [1.0 for _query, _document in pairs]
+
+    module.SentenceTransformer = SentenceTransformer
+    module.CrossEncoder = CrossEncoder
+    monkeypatch.setitem(sys.modules, "sentence_transformers", module)

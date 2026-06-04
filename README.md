@@ -1,37 +1,91 @@
 # Grid AgentCore
 
-AWS Bedrock AgentCore application for asking cited questions over Grid documents. The repo keeps the completed `app/SimpleAgentCore/` chatbot baseline and adds `app/GridAgentCore/` for Grid document retrieval, Claude Agent SDK tools/subagents, S3 artifact deployment, and a React trajectory UI.
+AWS Bedrock AgentCore application for asking cited questions over Grid documents. The repo keeps the completed `app/SimpleAgentCore/` chatbot baseline and adds `app/GridAgentCore/` for parsed Grid artifacts, vector/PageIndex/GraphRAG retrieval, Claude Agent SDK tools/subagents, S3 artifact deployment, and a React trajectory UI.
 
-## What It Does
+The app exposes observable agent events: root-agent text, tool calls, retrieval results, subagent calls, selected citations, latency, metadata, and errors. It does not expose hidden model chain-of-thought.
 
-`GridAgentCore` parses the PDFs in `/Users/maoxunhuang/Desktop/GridAgents/Grid Docs`, writes a text/Markdown corpus and manifest, builds retrieval artifacts, uploads runtime artifacts to S3, and runs a Claude Agent SDK root agent on AgentCore Runtime. The agent can use vector, PageIndex, GraphRAG, exact-find, `inspect_evidence`, `cite_evidence`, and optional `span-retriever` subagents. Responses include a cited answer plus observable events: root-agent text, tool calls, retrieval results, subagent calls, selected citations, latency, metadata, and errors.
+## MVP Fast Path
 
-The app does not expose hidden model chain-of-thought.
+Assumption: you already ran LlamaParse Agentic document parsing with VLM enrichment and the subset artifacts are in `.grid_artifacts/`.
 
-## Design
+Build the two fastest MVP indexes first:
 
-```text
-User / Frontend / CLI
-  -> local API or AWS Bedrock AgentCore Runtime
-  -> app/GridAgentCore/main.py
-  -> Claude Agent SDK root agent
-  -> MCP retrieval tools and optional span-retriever subagents
-  -> Grid parsed corpus, exact-find, and vector/PageIndex/GraphRAG indexes
-  -> Claude Sonnet on Amazon Bedrock
-  -> streamed trace events plus cited result
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore
+set -a
+source ../../.env
+set +a
+
+uv sync --extra dev
+
+uv run grid-build-indexes \
+  --artifact-dir ../../.grid_artifacts \
+  --methods vector,pageindex \
+  --vector-provider voyage \
+  --chunk-strategy semantic \
+  --search-strategy hybrid
 ```
 
-## Main Files
+Upload the parsed corpus, figures, and indexes:
+
+```bash
+uv run grid-upload-artifacts \
+  --artifact-dir ../../.grid_artifacts \
+  --bucket "$GRID_S3_BUCKET" \
+  --prefix "$GRID_S3_PREFIX"
+```
+
+Deploy and invoke:
+
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+
+python3 -m json.tool agentcore/agentcore.json >/dev/null
+python3 -m json.tool agentcore/aws-targets.json >/dev/null
+agentcore validate
+agentcore deploy --dry-run
+agentcore deploy -y
+agentcore status
+
+agentcore invoke \
+  --runtime GridAgentCore \
+  --stream \
+  --prompt "Summarize Gate 2 evidence requirements with citations."
+```
+
+The installed AgentCore CLI in this workspace exposes `agentcore deploy --dry-run`. Some AWS docs and CLI versions use `--plan` for preview, so check `agentcore deploy --help` if your CLI differs.
+
+## What The System Does
+
+```text
+User / Web UI / CLI
+  -> local API or AWS Bedrock AgentCore Runtime
+  -> app/GridAgentCore/main.py
+  -> Claude Agent SDK root agent and optional span-retriever subagent
+  -> vector, PageIndex, GraphRAG, and exact-find retrieval tools
+  -> parsed Grid corpus, raw PDFs, figure crops, and index artifacts
+  -> Claude Sonnet on Amazon Bedrock
+  -> cited answer plus observable trajectory
+```
+
+Runtime model calls use Amazon Bedrock through IAM. Parse-time VLM enrichment, Voyage embeddings, and local GraphRAG builds use direct provider APIs from your local machine unless noted.
+
+## Main Components
 
 - `app/GridAgentCore/main.py` - AgentCore streaming entrypoint.
+- `app/GridAgentCore/grid_agent_core/agent.py` - Claude Agent SDK tools, subagents, citations, and image blocks.
 - `app/GridAgentCore/grid_agent_core/corpus.py` - Grid PDF parsing, text corpus, manifest, page offsets, content hashes.
-- `app/GridAgentCore/grid_agent_core/llama_parse_agentic.py` - ParseBench-compatible LlamaParse Agentic parser wrapper.
-- `app/GridAgentCore/grid_agent_core/indexes.py` - vector, PageIndex, and GraphRAG index builders over the parsed corpus.
-- `app/GridAgentCore/grid_agent_core/retrieval.py` - retrieval repository over parsed Grid text and optional figure metadata.
-- `app/GridAgentCore/grid_agent_core/agent.py` - Claude Agent SDK session, retrieval tool responses, citations, `enable_subagents` payload knob.
-- `app/GridAgentCore/grid_agent_core/local_api.py` - FastAPI NDJSON proxy for the frontend.
+- `app/GridAgentCore/grid_agent_core/llama_parse_agentic.py` - LlamaParse Agentic parser wrapper.
+- `app/GridAgentCore/grid_agent_core/multimodal_enrichment.py` - figure-crop detection, VLM descriptions, and figure artifacts.
+- `app/GridAgentCore/grid_agent_core/indexes.py` - vector, PageIndex, and GraphRAG index builders.
+- `app/GridAgentCore/grid_agent_core/rag_compat/` - vendored compatibility layer for the sibling vector/PageIndex implementation.
+- `app/GridAgentCore/grid_agent_core/graphrag/` - rlm-eval-style GraphRAG worker protocol, canonical chunks, metadata, and worker.
+- `app/GridAgentCore/grid_agent_core/retrieval.py` - retrieval repository and figure attachment logic.
+- `app/GridAgentCore/grid_agent_core/upload_artifacts.py` - S3 artifact upload CLI.
+- `app/GridAgentCore/grid_agent_core/local_api.py` - FastAPI NDJSON proxy for frontend and deployed runtime.
 - `app/GridAgentCore/frontend/` - Vite React Grid QA UI.
 - `agentcore/agentcore.json` - active AgentCore deployment target for `GridAgentCore`.
+- `agentcore/aws-targets.json` - AWS account/region deployment target.
 - `app/SimpleAgentCore/` - preserved minimal chatbot baseline.
 
 Generated artifacts live under `.grid_artifacts/` by default and are ignored by git.
@@ -39,15 +93,18 @@ Generated artifacts live under `.grid_artifacts/` by default and are ignored by 
 ## Setup
 
 ```bash
-deactivate 2>/dev/null || true
-unset VIRTUAL_ENV
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
 cp .env.example .env
+
 cd app/GridAgentCore
 uv sync --extra dev
+
 cd frontend
 npm install
+
 cd ../../..
 npm install --prefix agentcore/cdk
+npm install -g @aws/agentcore
 ```
 
 Edit `.env`:
@@ -57,180 +114,383 @@ AWS_REGION=us-west-2
 AWS_PROFILE=default
 CLAUDE_CODE_USE_BEDROCK=1
 ANTHROPIC_MODEL=us.anthropic.claude-sonnet-4-5-20250929-v1:0
+
 GRID_ARTIFACT_DIR=.grid_artifacts
 GRID_S3_BUCKET=your-grid-agent-artifact-bucket
 GRID_S3_PREFIX=grid-agent-core
-LLAMA_CLOUD_API_KEY=your-llamaparse-key-for-agentic-parsing
-LLAMAPARSE_MAX_PAGES_PER_JOB=50
-LLAMAPARSE_TIMEOUT_SECONDS=600
-GRID_PARSE_DOCUMENT_CONCURRENCY=4
-GRID_MULTIMODAL_ENRICH=0
-GRID_VLM_RENDER_DPI=150
-GRID_VLM_CONCURRENCY=4
-GRID_VLM_MAX_FIGURE_CANDIDATES_PER_PAGE=4
-GRID_VLM_MAX_OUTPUT_TOKENS=4096
-GRID_VLM_MAX_RETRIES=3
-GRID_VLM_RETRY_BASE_SECONDS=2
-ANTHROPIC_API_KEY=your-anthropic-key-for-vlm-and-batch-indexing
+
+GRID_DOCS_DIR="/Users/maoxunhuang/Desktop/GridAgents/Grid Docs"
+GRID_PARSE_PROVIDER=llamaparse-agentic
+GRID_MULTIMODAL_ENRICH=1
+
+LLAMA_CLOUD_API_KEY=your-llamaparse-key
+ANTHROPIC_API_KEY=your-anthropic-key-for-vlm-and-graphrag
+VOYAGE_API_KEY=your-voyage-key-for-vector-and-graphrag
 ```
 
-Use `ANTHROPIC_API_KEY` for post-parse VLM enrichment and local index-time Message Batches. Runtime Claude calls use Bedrock IAM through Claude Agent SDK.
+Do not commit `.env`, AWS credentials, or API keys.
 
-## Parse Grid Documents
+## Artifact Preflight
 
-All retrieval indexes (vector, PageIndex, GraphRAG, exact-find) operate on parsed Markdown/text spans. The LlamaParse Agentic implementation intentionally matches the `doc-parser-eval` / ParseBench `llamaparse_agentic` pipeline by default: it keeps parser-produced Markdown, including any image references LlamaParse emits, but does not request or save separate image crops.
-
-For native multimodal RAG, add `--multimodal-enrich` after parsing. This is a separate VLM enrichment/materialization stage: the original PDF page is analyzed for candidate figure regions, tables/header/footer/noise candidates are filtered out, each remaining candidate is sent to an Anthropic vision model as a cropped image, and only accepted figure crops are saved as `FigureRecord` artifacts for the target agent. The VLM prompt is intentionally figure-only: ordinary tables are rejected because LlamaParse Agentic already parses them well.
-
-### Figure Enrichment Contract
-
-`--multimodal-enrich` keeps the visual unit small while giving the VLM enough text context to describe Grid engineering figures accurately:
-
-1. **Candidate detection** - The parser first uses any LlamaParse layout entries labeled as figures, charts, diagrams, or images. If layout entries are unavailable, it falls back to local PyMuPDF image/vector geometry. Layout tables, headers, footers, low-confidence entries, dark/blank crops, and text-heavy noise are skipped before the VLM call.
-2. **VLM input** - The VLM receives one JPEG image: the cropped candidate figure only. The text prompt also includes the document key, current page number, candidate bbox/source, nearby PDF text blocks that may contain the caption or surrounding explanation, the current page parsed Markdown, and small previous/next page snippets. This gives caption and document context without sending a noisy full-page screenshot.
-3. **VLM output** - The VLM must return JSON: `{"material_figure": true|false, "figure_type": "...", "description": "..."}`. `material_figure=false` rejects tables/forms/headers/footers/logos/blank/text crops. `material_figure=true` returns a detailed 6-12 sentence description covering visible labels, topology, axes/units, callouts, legends, and why the figure matters for retrieval.
-4. **Artifact output** - Accepted figures are saved as cropped JPEGs under `figures/grid/{document_key}/page-000N-figure-KK.jpg`. Full-page PDF screenshots are not saved as retrieval artifacts. Each manifest `FigureRecord` stores the crop path, hash, content type, page, `figure_crop` category, text span, and page-fraction bbox.
-5. **Parsed-output insertion** - The generated block is inserted back into that page's Markdown as `### Figure context - page N figure K` plus a Markdown image link to the crop. If LlamaParse emitted a Markdown image reference, the block is inserted immediately after that reference; otherwise it is appended inside the same page block, not at the end of the document.
-
-### Parsed Corpus
-
-- **`corpus/grid/*.txt`** — one file per document, concatenated parsed Markdown/text with `[Page N]` markers. If LlamaParse emits Markdown image references such as `![...](page_1_image_1_v2.jpg)`, they remain in this text exactly as parser output. With `--multimodal-enrich`, the file also contains `### Figure context - page N figure K` blocks and local Markdown links such as `![Page N figure K](figures/grid/.../page-000N-figure-KK.jpg)`.
-- **`manifest.jsonl`** — one record per document with source/corpus hashes, page spans, paths, and optional `figures`. In default ParseBench-compatible LlamaParse mode, `figures` is expected to be empty. With `--multimodal-enrich`, each saved figure crop is recorded with page, detailed description, local path, SHA-256, content type, size, text span, category, and page-fraction bounding box.
-- **`figures/grid/**/*.jpg`** — only present when multimodal enrichment is enabled and the VLM accepts a necessary figure crop. Full PDF page screenshots are not saved as retrieval artifacts.
-
-The parsed Markdown is useful for text-only retrieval because the VLM description is searchable text. The saved `FigureRecord` crop lets the target agent attach the relevant visual unit, not a noisy whole-page screenshot, when cited evidence overlaps the figure description.
-
-### LlamaParse Agentic Contract
-
-With `--parser llamaparse-agentic`, the parser matches `doc-parser-eval`'s ParseBench pipeline:
-
-- `tier="agentic"`
-- `version="latest"`
-- `disable_cache=True`
-- `get(..., expand=["items", "text", "metadata", "debug_logs"])`
-- no `output_options`
-- no `images_content_metadata` expansion
-- no local image download/materialization
-
-`--multimodal-enrich` does not change the LlamaParse request. It runs after the ParseBench-compatible parse, using the original PDF pages and direct Anthropic API VLM output to add figure-only descriptions and saved cropped figure artifacts. If LlamaParse layout metadata is present in a payload, the enrichment stage prefers layout entries labeled as figures and skips layout tables/noise. Otherwise it falls back to local PDF image/vector geometry and conservative crop filters.
-
-Parsing is a separate stage. Before parser calls begin, it scans the source PDFs and writes page-count/size metadata to `source_document_metadata.json`. It then writes copied raw PDFs under `raw/`, parsed corpus files under `corpus/grid/*.txt`, parser resume cache files under `parse_resume_cache/`, `manifest.jsonl`, `artifact_revision.txt`, and `parse_metadata.json`:
+Indexing requires a top-level manifest and revision file. Check the existing subset artifacts:
 
 ```bash
-set -a
-source .env
-set +a
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+test -f .grid_artifacts/manifest.jsonl
+test -f .grid_artifacts/artifact_revision.txt
+find .grid_artifacts/corpus/grid -maxdepth 1 -name '*.txt' -print
+find .grid_artifacts/figures/grid -type f -name '*.jpg' | head
+```
+
+If `manifest.jsonl` or `artifact_revision.txt` is missing, regenerate the manifest from the existing subset parse sidecars:
+
+```bash
 cd app/GridAgentCore
+set -a
+source ../../.env
+set +a
+
 uv run grid-parse-documents \
-  --source-dir "/Users/maoxunhuang/Desktop/GridAgents/Grid Docs" \
+  --source-dir ../../.grid_artifacts/raw \
   --artifact-dir ../../.grid_artifacts \
   --parser llamaparse-agentic \
   --multimodal-enrich \
   --force
 ```
 
-`--parser llamaparse-agentic` requires `LLAMA_CLOUD_API_KEY`. `--multimodal-enrich` requires `ANTHROPIC_API_KEY`; `GRID_VLM_MODEL`, when set, must be an Anthropic API model ID. If `GRID_VLM_MODEL` is unset, the parser translates Bedrock-style `ANTHROPIC_MODEL` values such as `us.anthropic.claude-sonnet-4-5-20250929-v1:0` into the corresponding direct Anthropic model ID. Use `--parser pypdf` for the local no-API fallback.
+This command should reuse `.grid_artifacts/parse_resume_cache/.../*.record.json` when sidecars, raw parse payloads, corpus files, raw PDFs, and figure hashes are current. If those files are incomplete or stale, it may call LlamaParse or the VLM again.
 
-Before a full LlamaParse run, use the smoke flag to parse only the first few
-pages of `02 - Industry Codes/00_The_Full_Grid_Code.pdf` and inspect the
-parsed-text preview plus Markdown image-reference count. This defaults to pages `1-8` and writes to
-`../../.grid_smoke_artifacts` so it does not overwrite the full corpus artifacts:
+The indexer builds indexes only for documents in `manifest.jsonl`. Because your current `.grid_artifacts/` contains a subset, the build/upload/deploy flow above deploys that subset only. For a later full-corpus build, use a separate artifact directory or replace `.grid_artifacts/` with the full parsed corpus before indexing.
+
+## Parse Grid Documents
+
+Skip this section if artifact preflight passes. A full parse from source PDFs:
 
 ```bash
 cd app/GridAgentCore
+set -a
+source ../../.env
+set +a
+
 uv run grid-parse-documents \
-  --source-dir "/Users/maoxunhuang/Desktop/GridAgents/Grid Docs" \
-  --smoke-full-grid-code \
-  --smoke-page-range 1-8 \
+  --source-dir "$GRID_DOCS_DIR" \
+  --artifact-dir ../../.grid_artifacts \
+  --parser llamaparse-agentic \
   --multimodal-enrich \
-  --no-resume
+  --force
 ```
 
-Parsing shows progress by default. Completed documents are resumable: re-running the command with `--force` rebuilds the manifest but reuses matching parsed text, raw PDF copies, and parser resume cache files. Use `--no-resume` only when you intentionally want to reparse every PDF. LlamaParse agentic jobs are automatically partitioned when a PDF is larger than `LLAMAPARSE_MAX_PAGES_PER_JOB` pages, so a 1102-page PDF is submitted as multiple smaller jobs and merged back with original page numbers. Completed partition payloads are cached under `parse_resume_cache/llamaparse_agentic/grid/*.partition_cache/`. Older `parse/` caches are migrated automatically on the next parse run.
+Parse outputs:
 
-Document parsing runs up to `GRID_PARSE_DOCUMENT_CONCURRENCY` PDFs in parallel by default. When `--multimodal-enrich` is enabled, `GRID_VLM_CONCURRENCY` is a run-wide cap on Anthropic VLM calls over cropped figure candidates, not a per-document multiplier. `GRID_VLM_MAX_FIGURE_CANDIDATES_PER_PAGE` limits how many candidate crops can be sent per page. The post-parse VLM phase shows document/page progress, writes per-page figure-candidate decisions under `parse_resume_cache/llamaparse_agentic/grid/*.visual_cache/`, and preserves page order when aggregating parallel results. This cache includes both saved figure crops and pages where no necessary figure was accepted, so interrupted runs can resume without repeating completed Anthropic VLM calls. Anthropic rate limits/timeouts are retried with exponential backoff controlled by `GRID_VLM_MAX_RETRIES` and `GRID_VLM_RETRY_BASE_SECONDS`. If Anthropic rate-limits the run, reduce `--vlm-concurrency`.
+- `corpus/grid/*.txt` - parsed Markdown/text with `[Page N]` markers.
+- `manifest.jsonl` - one document record per parsed PDF, including page spans and optional figure records.
+- `artifact_revision.txt` - content revision used for index freshness.
+- `raw/**.pdf` - copied source PDFs.
+- `figures/grid/**/*.jpg` - accepted figure crops.
+- `parse_resume_cache/` - local parse/VLM resume cache; not uploaded to runtime.
 
-Pressing Ctrl+C cancels queued document/page work and exits the CLI with status `130`. Python cannot gracefully interrupt an already in-flight API request inside a worker thread, so the CLI uses an immediate process exit after flushing the interruption message to avoid leaving background requests running.
+`--multimodal-enrich` keeps LlamaParse Agentic as the text/table parser, then sends only candidate figure crops to an Anthropic vision model. Tables, headers, footers, blank crops, logos, and noisy text crops should be rejected by the VLM filter.
 
-Older LlamaParse cache entries that used image extraction or Markdown/image metadata expansions are invalidated once because they do not match the ParseBench-compatible parser contract. Older visual caches are also invalidated when the VLM prompt contract changes, such as the switch to context-aware figure-crop descriptions. After a compatible parse completes, subsequent `--force` runs can resume from the new sidecars as long as the source PDF hash, parsed text, raw PDF copy, raw parse payload, multimodal-enrichment flag, and saved figure hashes still match.
+## Index Phase
 
-## Retrieval Behavior
+All index builders consume `.grid_artifacts/manifest.jsonl` and `corpus/grid/*.txt`. They do not parse PDFs.
 
-Retrieval is text-first. All indexes search against the parsed Markdown/text corpus.
+### Vector Index
 
-### Step 1 - Text Retrieval
+Yes, the vector index now uses semantic chunking by default.
 
-Vector, PageIndex, GraphRAG, and exact-find all return evidence hits as `(start_char, end_char, page)` spans over a document's `.txt` corpus file.
+The implementation follows the sibling `/Users/maoxunhuang/Desktop/GridAgents/vector_pageindex_rag_eval/` `VectorRAG` logic through `grid_agent_core.rag_compat.vector_rag`. The default CLI settings are:
 
-### Step 2 - Evidence Response
+- `--chunk-strategy semantic`
+- `--search-strategy hybrid`
+- `--vector-provider voyage`
+- `GRID_VECTOR_EMBEDDING_MODEL=voyage-law-2`
+- `GRID_VECTOR_RERANKER_ENABLED=1`
+- `GRID_VECTOR_RERANKER_MODEL=rerank-2`
 
-The MCP retrieval tools build text evidence blocks with document title, page range, evidence ID, retrieved passage text, and any attached `FigureRecord` entries whose page/span overlaps the evidence.
+Semantic chunking embeds paragraph/window units with the configured embedder, computes adjacent-window distance breakpoints, then packs spans with overlap. The same corpus text, including VLM figure-description blocks, is embedded. Image bytes are not embedded in the vector index.
 
-### Multimodal Note
-
-The default ParseBench-compatible LlamaParse path has no native image content blocks because no local image artifacts are saved. With `--multimodal-enrich`, the VLM figure description is embedded in the parsed Markdown and the saved cropped JPEG is attached to matching evidence. The target agent can then include both searchable visual text and the actual figure image block in the model context.
-
-## Build Grid Indexes
-
-Indexing is the second stage and consumes the parsed corpus from `--artifact-dir`. It does not parse PDFs and does not need `--source-dir`.
-
-Build the vector index:
+Build vector only:
 
 ```bash
 cd app/GridAgentCore
+set -a
+source ../../.env
+set +a
+
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \
   --methods vector \
-  --vector-provider voyage
+  --vector-provider voyage \
+  --chunk-strategy semantic \
+  --search-strategy hybrid
 ```
 
-Use `--vector-provider local` for a deterministic no-API fallback during development.
+Other vector knobs:
 
-Index builds show progress by default, cache per-document parts under `indexes/*/parts/`, and skip final indexes that already match the current `artifact_revision.txt`. If a run stops midway, rerun the same command to continue from completed parts. Use `--rebuild-indexes` to rebuild final vector/PageIndex outputs, and `--no-resume` only when you want to ignore cached per-document index parts. The hidden compatibility flag `--force` is treated as `--rebuild-indexes` during indexing.
+```bash
+# Alternatives from vector_pageindex_rag_eval:
+--chunk-strategy semantic|hierarchical|recursive|fixed
+--search-strategy hybrid|vector
+--vector-provider voyage|sentence_transformers
+```
 
-Build PageIndex. Enable Anthropic direct Message Batches to reduce summary cost:
+Use `sentence_transformers` only for local/offline experimentation after installing the relevant models and packages. The MVP path is Voyage.
+
+### PageIndex
+
+The PageIndex implementation follows the sibling `/Users/maoxunhuang/Desktop/GridAgents/vector_pageindex_rag_eval/` `PageIndexRAG` logic through `grid_agent_core.rag_compat.pageindex_rag`.
+
+Build PageIndex:
 
 ```bash
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \
-  --methods pageindex \
-  --anthropic-batch
+  --methods pageindex
 ```
 
-GraphRAG uses a local copy of the Microsoft GraphRAG worker under
-`grid_agent_core/graphrag/`. Install the optional build-time dependencies in
-this project before indexing:
+PageIndex builds offset-preserving virtual pages, constructs a table-of-contents tree, optionally semanticizes page and parent nodes with an LLM, and queries by selecting documents then nodes. If `ANTHROPIC_API_KEY` is set, the compatibility LLM uses Anthropic direct API. Otherwise it uses the configured Bedrock Claude model through `bedrock-runtime`.
+
+For a cheaper smoke build:
+
+```bash
+GRID_PAGEINDEX_BUILD_WITH_LLM=0 uv run grid-build-indexes \
+  --artifact-dir ../../.grid_artifacts \
+  --methods pageindex
+```
+
+`--anthropic-batch` is intentionally unsupported for this exact PageIndex implementation. Build without that flag.
+
+### GraphRAG
+
+GraphRAG follows the rlm-eval shape:
+
+- canonical sentence-packed chunks with `CHUNKER_SIGNATURE=canonical_v1__sentence_pack`
+- `corpus.json` plus `canonical_chunks.json`
+- a worker protocol for build/query requests
+- freshness checks through `INDEX_META.json`
+- query-time text-unit span recovery back to corpus offsets
+
+The worker is adapted for the current `graphrag` Python API in this project, but the retrieval contract follows the rlm-eval worker/span-resolution flow.
+
+Install GraphRAG dependencies and build:
 
 ```bash
 cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore
+set -a
+source ../../.env
+set +a
+
 uv sync --extra dev --extra graphrag
+
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \
   --methods graphrag
 ```
 
-Do not include `find` in index builds. Exact-find is keyword search over the parsed corpus at retrieval time and has no index artifact.
+GraphRAG is slower and more dependency-heavy than vector/PageIndex. It requires `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY` for the local worker. The current runtime GraphRAG retrieval path also invokes the worker at query time, so only enable the `graphrag` retrieval method in AgentCore after the deployed package and runtime environment include GraphRAG dependencies and required API keys. For the fastest MVP, deploy `vector,pageindex,find` first.
 
-If GraphRAG dependencies or API keys are missing, the script reports the missing
-project-local dependency instead of silently skipping it.
-
-## Upload Raw Documents And Artifacts To AWS
-
-Create the S3 bucket once, then upload the ignored local artifacts:
+### One Command For All Indexes
 
 ```bash
+uv sync --extra dev --extra graphrag
+
+uv run grid-build-indexes \
+  --artifact-dir ../../.grid_artifacts \
+  --methods vector,pageindex,graphrag \
+  --vector-provider voyage \
+  --chunk-strategy semantic \
+  --search-strategy hybrid
+```
+
+Do not include `find` in index builds. Exact find searches the parsed corpus directly at retrieval time and has no index artifact.
+
+### Resume And Rebuild
+
+- Re-run the same command after an interruption; VectorRAG and PageIndex reuse cache files under `indexes/*/cache/`.
+- Use `--rebuild-indexes` to rebuild vector/PageIndex outputs.
+- Use `--rebuild-graphrag` to rebuild GraphRAG output.
+- Use `--no-resume` to ignore VectorRAG/PageIndex cache files.
+- The hidden compatibility flag `--force` is treated as `--rebuild-indexes` by the index CLI.
+
+### Verify Index Artifacts
+
+```bash
+test -f ../../.grid_artifacts/indexes/vector/index.json
+test -f ../../.grid_artifacts/indexes/vector/config.json
+test -f ../../.grid_artifacts/indexes/pageindex/index.json
+test -f ../../.grid_artifacts/indexes/pageindex/config.json
+test -d ../../.grid_artifacts/graphrag_data/graph_index/graphrag_ms/output
+```
+
+For a first deployed MVP, vector and PageIndex are enough. Add GraphRAG after the output directory exists and runtime dependencies are configured.
+
+## Figure And Image Workflow
+
+### Parse Time
+
+VLM enrichment creates a `FigureRecord` only for accepted material figures:
+
+1. Candidate detection prefers LlamaParse layout entries labeled as figure, image, chart, or diagram. If layout entries are unavailable, it falls back to local PDF image/vector geometry.
+2. The VLM receives the cropped candidate image plus nearby text, page Markdown, document key, page number, and small previous/next page snippets.
+3. Accepted crops are saved under `figures/grid/{document_key}/page-000N-figure-KK.jpg`.
+4. A `### Figure context - page N figure K` block is inserted into the parsed page Markdown with a Markdown image link and detailed text description.
+5. The manifest records figure page, image path, hash, content type, byte size, page-fraction bbox, and text span.
+
+Full-page screenshots are not saved as retrieval artifacts. Ordinary tables are expected to be represented by LlamaParse text/Markdown, not by figure VLM enrichment.
+
+### Index Time
+
+Indexes are text-first:
+
+- Vector embeds semantic chunks of parsed corpus text. If a chunk contains a figure-context block, the figure description and Markdown image path are part of the embedded text.
+- PageIndex indexes virtual page/tree node text. If a virtual page contains a figure-context block, the node summary and retrieval span can include that description.
+- GraphRAG builds text units, entities, relationships, and communities from parsed corpus text. Figure descriptions can influence text units/entities, but image bytes are not stored in the graph.
+
+The actual image crop is linked after retrieval through the manifest. Index nodes store or recover text spans; they do not store image bytes.
+
+### Retrieval Time
+
+Each retrieval hit becomes an `Evidence` object with document title, page, text span, score, method, and optional figure metadata.
+
+If the hit overlaps a `FigureRecord` text span, the evidence attaches that figure. If no direct span overlap is available, the retrieval layer falls back to figures on the same page.
+
+When a figure is attached:
+
+- The tool response includes the retrieved text, figure ID, VLM description, local artifact path, and S3 URI when configured.
+- `agent.py` loads the local crop from the runtime artifact directory and sends up to `MAX_TOOL_IMAGES = 4` image blocks to Claude Agent SDK, capped at `MAX_TOOL_IMAGE_BYTES = 4_000_000` per image.
+- In AgentCore, the local crop exists because the runtime downloads S3 artifacts into `/tmp/grid-agent-core/artifacts` on first use.
+- The frontend displays cited source snippets and figure IDs/links when evidence includes figures.
+
+So the workflow is: figure crop -> VLM description inserted into text -> text is indexed -> retrieval returns a text span -> manifest overlap resolves the actual image -> the agent receives both description text and the image crop. If the parsed text contains only a raw Markdown image reference and no `FigureRecord`, retrieval can find surrounding text, but no actual image block is attached.
+
+## Upload Artifacts To AWS
+
+Create the bucket once if it does not exist:
+
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
 set -a
 source .env
 set +a
+
 aws s3 mb "s3://$GRID_S3_BUCKET" --region "$AWS_REGION"
+```
+
+Upload runtime artifacts:
+
+```bash
 cd app/GridAgentCore
+
 uv run grid-upload-artifacts \
   --artifact-dir ../../.grid_artifacts \
   --bucket "$GRID_S3_BUCKET" \
   --prefix "$GRID_S3_PREFIX"
 ```
 
-The upload includes copied raw PDFs, `source_document_metadata.json`, `manifest.jsonl`, `artifact_revision.txt`, `parse_metadata.json`, text corpus files, optional `figures/` image artifacts, and index directories. Parser resume caches under `parse_resume_cache/` and legacy `parse/` are intentionally skipped because they are local-only and may contain temporary LlamaParse URLs that are not needed by AgentCore runtime.
+The upload includes raw PDFs, source metadata, manifest, artifact revision, parse metadata, corpus text, figure images, and index directories. It intentionally skips `parse_resume_cache/` and legacy `parse/` caches.
+
+Verify:
+
+```bash
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/manifest.jsonl"
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/vector/index.json"
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/pageindex/index.json"
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/figures/" --recursive | head
+```
+
+If you built GraphRAG:
+
+```bash
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/graphrag_data/graph_index/graphrag_ms/output/" --recursive | head
+```
+
+## Deploy To AgentCore Runtime
+
+Before deploying, edit `agentcore/agentcore.json` so runtime env vars match `.env`:
+
+- `AWS_REGION`
+- `ANTHROPIC_MODEL`
+- `GRID_S3_BUCKET`
+- `GRID_S3_PREFIX`
+- `GRID_ARTIFACT_DIR=/tmp/grid-agent-core/artifacts`
+
+Also verify `agentcore/aws-targets.json` uses the AWS account and region where the selected Bedrock Claude model is available.
+
+Deploy:
+
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+set -a
+source .env
+set +a
+
+aws sts get-caller-identity
+python3 -m json.tool agentcore/agentcore.json >/dev/null
+python3 -m json.tool agentcore/aws-targets.json >/dev/null
+agentcore validate
+agentcore deploy --dry-run
+agentcore deploy -y
+agentcore status
+```
+
+If CDK has not been bootstrapped in the target account/region:
+
+```bash
+npx cdk bootstrap "aws://$(aws sts get-caller-identity --query Account --output text)/$AWS_REGION"
+```
+
+## Invoke And Test Deployed Runtime
+
+CLI payload:
+
+```bash
+agentcore invoke \
+  --runtime GridAgentCore \
+  --stream \
+  --prompt "What does Gate 2 readiness require? Cite sources."
+```
+
+Boto3 payload:
+
+```bash
+python3 - <<'PY'
+import json
+import os
+import uuid
+
+import boto3
+
+payload = {
+    "prompt": "What does Gate 2 readiness require? Cite sources.",
+    "methods": ["vector", "pageindex", "find"],
+    "enable_subagents": True,
+    "allow_sdk_file_tools": False,
+}
+
+client = boto3.client("bedrock-agentcore", region_name=os.environ["AWS_REGION"])
+response = client.invoke_agent_runtime(
+    agentRuntimeArn=os.environ["AGENTCORE_RUNTIME_ARN"],
+    runtimeSessionId=str(uuid.uuid4()),
+    payload=json.dumps(payload).encode("utf-8"),
+    contentType="application/json",
+    accept="application/json",
+    qualifier=os.getenv("AGENTCORE_RUNTIME_QUALIFIER") or "DEFAULT",
+)
+
+body = response.get("response", [])
+if hasattr(body, "iter_lines"):
+    chunks = body.iter_lines()
+else:
+    chunks = body
+
+for chunk in chunks:
+    if chunk:
+        print(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk)
+PY
+```
+
+Set `AGENTCORE_RUNTIME_ARN` in `.env` to make the local FastAPI proxy forward frontend requests to the deployed runtime.
 
 ## Run Locally
 
@@ -241,6 +501,7 @@ cd app/GridAgentCore
 set -a
 source ../../.env
 set +a
+
 uv run python local_chat.py \
   --methods vector,pageindex,find \
   "What does Gate 2 readiness require?"
@@ -257,7 +518,7 @@ Payload shape:
 }
 ```
 
-`enable_subagents` defaults to `true`; set it to `false` to keep retrieval in the root agent only.
+`enable_subagents` defaults to `true`. Use `--disable-subagents` in `local_chat.py` to keep retrieval in the root agent only.
 
 ## Run The Frontend
 
@@ -278,42 +539,30 @@ cd app/GridAgentCore/frontend
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. The UI posts the same payload, streams NDJSON events from `/api/grid/run`, and displays the answer, citations, root-agent turns, retrieval calls, subagent threads, latency, and errors. When cited evidence has attached figures, the source snippet card also shows the figure IDs and S3/local artifact links.
+Open `http://127.0.0.1:5173`.
 
-Set `AGENTCORE_RUNTIME_ARN` in `.env` to make the local API forward `/api/grid/run` to a deployed AgentCore runtime instead of running the local SDK session. The optional request field `runtime_session_id` is passed as AgentCore `runtimeSessionId`; when omitted, the proxy creates one for the request.
+The UI posts the same payload, streams NDJSON events from `/api/grid/run`, and displays the answer, citations, root-agent turns, retrieval calls, subagent threads, latency, and errors. When cited evidence has attached figures, the source snippet card shows figure IDs and S3/local artifact links.
 
-## Deploy To AgentCore
+## How The Agent Works Internally
 
-`agentcore/agentcore.json` is configured for `app/GridAgentCore/`. Replace `GRID_S3_BUCKET` in that file before deployment, or keep it synchronized with `.env`.
-
-```bash
-set -a
-source .env
-set +a
-python3 -m json.tool agentcore/agentcore.json
-python3 -m json.tool agentcore/aws-targets.json
-agentcore validate
-agentcore deploy --dry-run
-agentcore deploy
-```
-
-Invoke:
-
-```bash
-agentcore invoke --payload '{
-  "prompt": "Summarize Gate 2 evidence requirements with citations.",
-  "methods": ["vector", "pageindex", "find"],
-  "enable_subagents": true
-}'
-```
+1. `main.py` receives a JSON payload from AgentCore Runtime.
+2. `GridAgentSession` normalizes requested methods and ensures artifacts exist locally.
+3. If local artifacts are missing, `ensure_artifacts()` downloads from `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX`.
+4. Claude Agent SDK starts a root agent with MCP tools for each enabled retrieval method.
+5. Retrieval tools return citation-ready evidence IDs and optional figure image blocks.
+6. Optional `span-retriever` subagents can independently search and report candidate evidence.
+7. The root agent calls `cite_evidence` before finalizing.
+8. The app streams trace events and a final result with answer, citations, evidence, trajectory, model, artifact revision, methods, latency, and errors.
 
 ## Isolation And Scalability
 
-- AgentCore Runtime gives isolated sessions; preserve session IDs for continued conversations.
-- The v1 storage design uses S3. Each runtime downloads artifacts into `/tmp/grid-agent-core/artifacts` on first use and verifies the manifest/revision.
-- Keep `networkMode` as `PUBLIC` while using Bedrock plus S3. Move to VPC only when private dependencies require it.
-- Move from S3 download-on-start to AgentCore mounted filesystems/EFS only if artifact size, cold-start time, or concurrency requires it. AgentCore filesystem mounts require VPC/NFS configuration.
-- For higher concurrency, keep retrieval artifacts immutable by revision and upload a new S3 prefix for each rebuild. Deploy/runtime env vars can then point to the new prefix without mutating existing sessions.
+- AgentCore Runtime provides isolated sessions. Preserve `runtimeSessionId` for multi-turn continuity; use a new session ID for independent questions.
+- This MVP uses immutable S3 artifact prefixes. Rebuild indexes into a new prefix for safer production updates, then redeploy or update runtime env vars to point at the new prefix.
+- Runtime artifact download is lazy: the first request downloads artifacts to `/tmp/grid-agent-core/artifacts`. Larger artifacts increase cold-start latency.
+- Keep `networkMode` as `PUBLIC` while the runtime only needs Bedrock and S3 for vector/PageIndex/find.
+- Move to VPC only for private dependencies.
+- Move from S3 download-on-start to mounted filesystems/EFS only if artifact size, cold-start time, or concurrent download pressure requires it.
+- Keep runtime IAM read-only for artifacts. Build and upload permissions should stay with local/deployment users, not the runtime role.
 
 ## Environment Variables
 
@@ -325,28 +574,47 @@ Runtime:
 - `GRID_ARTIFACT_DIR`
 - `GRID_S3_BUCKET`
 - `GRID_S3_PREFIX`
-- `AGENTCORE_RUNTIME_ARN` and `AGENTCORE_RUNTIME_QUALIFIER` for optional local API forwarding to a deployed runtime.
+- `AGENTCORE_RUNTIME_ARN` and `AGENTCORE_RUNTIME_QUALIFIER` for optional local API forwarding.
 
-Index-time only:
+Vector/PageIndex index-time:
 
-- `GRID_DOCS_DIR` for the local source PDF folder used by `grid-parse-documents`.
-- `GRID_PARSE_PROVIDER` optional default parser: `llamaparse-agentic` or `pypdf`.
-- `LLAMA_CLOUD_API_KEY` for `grid-parse-documents --parser llamaparse-agentic`.
-- `LLAMAPARSE_MAX_PAGES_PER_JOB` optional page partition size for large LlamaParse PDFs. Defaults to `50`.
-- `LLAMAPARSE_TIMEOUT_SECONDS` optional wait timeout for each LlamaParse job. Defaults to `600`.
-- `GRID_PARSE_DOCUMENT_CONCURRENCY` controls how many PDFs are parsed in parallel. Defaults to `4`.
-- `GRID_MULTIMODAL_ENRICH=1` optionally enables post-parse Anthropic VLM descriptions and saved cropped figure artifacts.
-- `GRID_VLM_MODEL` optionally overrides the Anthropic API model used for multimodal enrichment. If unset, Bedrock-style `ANTHROPIC_MODEL` values are translated for direct Anthropic API use.
-- `GRID_VLM_RENDER_DPI` controls figure-crop render resolution for enrichment. Defaults to `150`.
-- `GRID_VLM_CONCURRENCY` controls the run-wide parallel Anthropic VLM figure-crop call cap. Defaults to `4`.
-- `GRID_VLM_MAX_FIGURE_CANDIDATES_PER_PAGE` controls how many candidate figure crops can be sent to the VLM for each parsed page. Defaults to `4`.
-- `GRID_VLM_MAX_OUTPUT_TOKENS` caps each VLM figure-description response. Defaults to `4096`; keep this far below the model maximum so non-streaming smoke parses do not trigger long-request streaming requirements.
-- `GRID_VLM_MAX_RETRIES` controls extra Anthropic VLM retries after SDK retries. Defaults to `3`.
-- `GRID_VLM_RETRY_BASE_SECONDS` controls VLM retry backoff base delay. Defaults to `2`.
-- `ANTHROPIC_API_KEY` for Anthropic direct VLM enrichment and Message Batches.
-- `GRID_BATCH_MODEL` for batch summary model selection.
-- `VOYAGE_API_KEY` for Voyage vector indexing and the local GraphRAG worker embeddings.
-- `GRID_GRAPHRAG_MODEL` and `GRID_GRAPHRAG_EMBED_MODEL` to override local GraphRAG worker defaults.
+- `VOYAGE_API_KEY`
+- `GRID_VECTOR_EMBEDDING_MODEL`
+- `GRID_VECTOR_RERANKER_ENABLED`
+- `GRID_VECTOR_RERANKER_MODEL`
+- `GRID_VECTOR_CHUNK_SIZE`
+- `GRID_VECTOR_CHUNK_OVERLAP`
+- `GRID_VECTOR_SEMANTIC_BREAK_PERCENTILE`
+- `GRID_VECTOR_SEMANTIC_WINDOW_SIZE`
+- `GRID_VECTOR_SEMANTIC_MIN_CHUNK_SIZE`
+- `GRID_PAGEINDEX_BUILD_WITH_LLM`
+- `GRID_PAGEINDEX_*` budget and selection controls
+
+Parse/figure index-time:
+
+- `GRID_DOCS_DIR`
+- `GRID_PARSE_PROVIDER`
+- `LLAMA_CLOUD_API_KEY`
+- `LLAMAPARSE_MAX_PAGES_PER_JOB`
+- `LLAMAPARSE_TIMEOUT_SECONDS`
+- `GRID_PARSE_DOCUMENT_CONCURRENCY`
+- `GRID_MULTIMODAL_ENRICH`
+- `GRID_VLM_MODEL`
+- `GRID_VLM_RENDER_DPI`
+- `GRID_VLM_CONCURRENCY`
+- `GRID_VLM_MAX_FIGURE_CANDIDATES_PER_PAGE`
+- `GRID_VLM_MAX_OUTPUT_TOKENS`
+- `GRID_VLM_MAX_RETRIES`
+- `GRID_VLM_RETRY_BASE_SECONDS`
+- `ANTHROPIC_API_KEY`
+
+GraphRAG:
+
+- `ANTHROPIC_API_KEY`
+- `VOYAGE_API_KEY`
+- `GRID_GRAPHRAG_MODEL`
+- `GRID_GRAPHRAG_EMBED_MODEL`
+- `GRID_GRAPHRAG_QUERY_TIMEOUT_SECONDS`
 
 ## IAM Permissions
 
@@ -356,6 +624,7 @@ Local/deploy caller:
 - CloudFormation, IAM role/policy, S3 asset, and CloudWatch Logs permissions required by the AgentCore CLI.
 - `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` for the selected Claude Sonnet model.
 - S3 read/write to `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/*`.
+- `bedrock-agentcore:InvokeAgentRuntime` for deployed runtime testing.
 
 Runtime execution role:
 
@@ -363,16 +632,14 @@ Runtime execution role:
 - `s3:ListBucket` on the artifact bucket with the configured prefix condition.
 - `s3:GetObject` on `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/*`.
 
-No local AWS credentials or API keys should be committed.
+## Verification
 
-## Verify
-
-Do not run the full Grid index build unless you intend to pay for and wait on it. Run these checks:
+Do not run full Grid index builds unless you intend to pay for and wait on them. For code and frontend checks:
 
 ```bash
 cd app/GridAgentCore
 uv run pytest
-python3 -m py_compile main.py local_chat.py grid_agent_core/*.py grid_agent_core/graphrag/*.py
+python3 -m py_compile main.py local_chat.py grid_agent_core/*.py grid_agent_core/graphrag/*.py grid_agent_core/rag_compat/*.py
 
 cd frontend
 npm test
@@ -384,6 +651,12 @@ uv run pytest
 cd ../..
 agentcore validate
 ```
+
+## AWS References
+
+- AgentCore CLI setup, deploy, invoke, and Boto3 payload shape: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-get-started-cli.html
+- AgentCore Runtime invocation and streaming responses: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-invoke-agent.html
+- AgentCore CLI command reference: https://aws.github.io/bedrock-agentcore-starter-toolkit/api-reference/cli.html
 
 ## SimpleAgentCore Baseline
 

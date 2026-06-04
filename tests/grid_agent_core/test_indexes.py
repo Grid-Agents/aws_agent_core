@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import pytest
-
 import json
+import sys
+import types
+
+import numpy as np
+import pytest
 
 from grid_agent_core.indexes import (
     build_all,
@@ -12,6 +15,7 @@ from grid_agent_core.indexes import (
 )
 from grid_agent_core.models import DocumentRecord, PageRecord
 from grid_agent_core.corpus import write_manifest
+from grid_agent_core.rag_compat.vector_rag import VectorRAG
 
 
 def test_graphrag_prerequisites_are_local_artifacts(tmp_path) -> None:
@@ -38,17 +42,27 @@ def test_build_all_requires_parsed_corpus(tmp_path) -> None:
         build_all(tmp_path / "artifacts", methods=["vector"])
 
 
-def test_vector_index_resumes_document_parts(tmp_path, monkeypatch) -> None:
+def test_vector_index_reuses_cached_chunks(tmp_path, monkeypatch) -> None:
+    _install_fake_sentence_transformers(monkeypatch)
+    monkeypatch.setenv("GRID_VECTOR_RERANKER_ENABLED", "0")
     artifact_dir = write_graphrag_fixture(tmp_path)
-    index_path = build_vector_index(artifact_dir, provider="local")
+    index_path = build_vector_index(
+        artifact_dir,
+        provider="sentence_transformers",
+        chunk_strategy="fixed",
+    )
     index_path.unlink()
 
-    def fail_make_chunks(*_args, **_kwargs):
-        pytest.fail("expected vector index to reuse the document part")
+    def fail_build_chunks(*_args, **_kwargs):
+        pytest.fail("expected vector index to reuse the cached chunks")
 
-    monkeypatch.setattr("grid_agent_core.indexes.make_chunks", fail_make_chunks)
+    monkeypatch.setattr(VectorRAG, "_build_chunks", fail_build_chunks)
 
-    resumed_path = build_vector_index(artifact_dir, provider="local")
+    resumed_path = build_vector_index(
+        artifact_dir,
+        provider="sentence_transformers",
+        chunk_strategy="fixed",
+    )
 
     assert resumed_path.exists()
 
@@ -75,3 +89,38 @@ def write_graphrag_fixture(tmp_path):
         ],
     )
     return artifact_dir
+
+
+def _install_fake_sentence_transformers(monkeypatch) -> None:
+    module = types.ModuleType("sentence_transformers")
+
+    class SentenceTransformer:
+        def __init__(self, _model_name: str):
+            pass
+
+        def encode(self, texts, **_kwargs):
+            rows = []
+            for text in texts:
+                lowered = str(text).casefold()
+                rows.append(
+                    [
+                        float("grid" in lowered),
+                        float("document" in lowered),
+                        float("text" in lowered),
+                        1.0,
+                    ]
+                )
+            values = np.asarray(rows, dtype=np.float32)
+            norms = np.linalg.norm(values, axis=1, keepdims=True)
+            return values / np.maximum(norms, 1e-12)
+
+    class CrossEncoder:
+        def __init__(self, _model_name: str):
+            pass
+
+        def predict(self, pairs):
+            return [1.0 for _query, _document in pairs]
+
+    module.SentenceTransformer = SentenceTransformer
+    module.CrossEncoder = CrossEncoder
+    monkeypatch.setitem(sys.modules, "sentence_transformers", module)
