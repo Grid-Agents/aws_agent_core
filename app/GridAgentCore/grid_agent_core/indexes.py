@@ -21,7 +21,7 @@ from .graphrag.span_resolver import resolve_spans
 from .graphrag.worker_protocol import index_request, parse_worker_stdout, query_request
 from .progress import ProgressBar
 from .rag_compat.grid_llm import make_pageindex_llm
-from .rag_compat.pageindex_rag import PageIndexRAG
+from .rag_compat.official_pageindex import OfficialPageIndexRAG
 from .rag_compat.types import Document
 from .rag_compat.vector_rag import VectorRAG
 from .settings import DEFAULT_ARTIFACT_DIR
@@ -33,6 +33,8 @@ GRAPHRAG_REQUIRED_MODULES = (
     "lancedb",
     "litellm",
 )
+PAGEINDEX_LOGIC = "vector_pageindex_rag_eval.OfficialPageIndexRAG"
+PAGEINDEX_REPO_URL = "https://github.com/VectifyAI/PageIndex.git"
 
 
 @dataclass(frozen=True)
@@ -279,23 +281,29 @@ def _pageindex_config(*, cache_dir: Path, force_reindex: bool) -> dict[str, Any]
     return {
         "cache_dir": str(cache_dir),
         "force_reindex": force_reindex,
+        "repo_url": os.getenv("GRID_PAGEINDEX_REPO_URL", PAGEINDEX_REPO_URL),
+        "repo_ref": os.getenv("GRID_PAGEINDEX_REPO_REF", "main"),
+        "repo_path": os.getenv("GRID_PAGEINDEX_REPO_PATH", ""),
+        "auto_clone_repo": _env_bool("GRID_PAGEINDEX_AUTO_CLONE_REPO", True),
         "build_with_llm": _env_bool("GRID_PAGEINDEX_BUILD_WITH_LLM", True),
         "virtual_page_target_tokens": int(os.getenv("GRID_PAGEINDEX_VIRTUAL_PAGE_TARGET_TOKENS", "900")),
         "virtual_page_max_tokens": int(os.getenv("GRID_PAGEINDEX_VIRTUAL_PAGE_MAX_TOKENS", "1200")),
-        "toc_check_units": int(os.getenv("GRID_PAGEINDEX_TOC_CHECK_UNITS", "20")),
-        "max_units_per_node": int(os.getenv("GRID_PAGEINDEX_MAX_UNITS_PER_NODE", "10")),
-        "max_tokens_per_node": int(os.getenv("GRID_PAGEINDEX_MAX_TOKENS_PER_NODE", "20000")),
-        "node_summary_max_tokens": int(os.getenv("GRID_PAGEINDEX_NODE_SUMMARY_MAX_TOKENS", "220")),
-        "root_summary_max_tokens": int(os.getenv("GRID_PAGEINDEX_ROOT_SUMMARY_MAX_TOKENS", "260")),
+        "if_thinning": _env_bool("GRID_PAGEINDEX_IF_THINNING", False),
+        "thinning_threshold": int(os.getenv("GRID_PAGEINDEX_THINNING_THRESHOLD", "5000")),
+        "if_add_node_summary": os.getenv("GRID_PAGEINDEX_IF_ADD_NODE_SUMMARY", "yes"),
+        "if_add_doc_description": os.getenv("GRID_PAGEINDEX_IF_ADD_DOC_DESCRIPTION", "yes"),
+        "if_add_node_text": os.getenv("GRID_PAGEINDEX_IF_ADD_NODE_TEXT", "no"),
+        "summary_token_threshold": int(os.getenv("GRID_PAGEINDEX_SUMMARY_TOKEN_THRESHOLD", "200")),
         "selected_documents": int(os.getenv("GRID_PAGEINDEX_SELECTED_DOCUMENTS", "5")),
         "max_document_catalog_chars": int(os.getenv("GRID_PAGEINDEX_MAX_DOCUMENT_CATALOG_CHARS", "120000")),
         "max_document_catalog_candidates": int(os.getenv("GRID_PAGEINDEX_MAX_DOCUMENT_CATALOG_CANDIDATES", "80")),
         "max_tree_chars": int(os.getenv("GRID_PAGEINDEX_MAX_TREE_CHARS", "24000")),
-        "selected_nodes": int(os.getenv("GRID_PAGEINDEX_SELECTED_NODES", "8")),
+        "selected_nodes": int(os.getenv("GRID_PAGEINDEX_SELECTED_NODES", "10")),
         "max_retrieved_chars_per_node": int(os.getenv("GRID_PAGEINDEX_MAX_RETRIEVED_CHARS_PER_NODE", "5000")),
         "record_reasoning_trajectory": _env_bool("GRID_PAGEINDEX_RECORD_REASONING_TRAJECTORY", True),
         "reasoning_max_catalog_chars": int(os.getenv("GRID_PAGEINDEX_REASONING_MAX_CATALOG_CHARS", "12000")),
         "reasoning_max_node_summary_chars": int(os.getenv("GRID_PAGEINDEX_REASONING_MAX_NODE_SUMMARY_CHARS", "320")),
+        "reasoning_max_trace_nodes": int(os.getenv("GRID_PAGEINDEX_REASONING_MAX_TRACE_NODES", "250")),
     }
 
 
@@ -311,7 +319,7 @@ def build_pageindex(
     del show_progress
     if anthropic_batch:
         raise RuntimeError(
-            "The vector_pageindex_rag_eval PageIndex implementation does not use "
+            "The vector_pageindex_rag_eval official PageIndex implementation does not use "
             "Anthropic Message Batches. Build without --anthropic-batch."
         )
     records = load_manifest(artifact_dir)
@@ -323,22 +331,25 @@ def build_pageindex(
     expected_meta = {
         "method": "pageindex",
         "artifact_revision": revision,
-        "logic": "vector_pageindex_rag_eval.PageIndexRAG",
+        "logic": PAGEINDEX_LOGIC,
         "build_with_llm": bool(cfg.get("build_with_llm", True)),
+        "repo_url": cfg.get("repo_url"),
+        "repo_ref": cfg.get("repo_ref"),
+        "repo_path": cfg.get("repo_path"),
     }
     if resume and not rebuild and _index_is_current(index_dir, expected=expected_meta):
         print("pageindex: index fresh, skipping (use --rebuild-indexes to force)")
         return path
 
     llm = make_pageindex_llm({"model": model} if model else {}) if cfg.get("build_with_llm", True) else None
-    pageindex = PageIndexRAG(cfg, llm, cache_dir=cache_dir)
+    pageindex = OfficialPageIndexRAG(cfg, llm, cache_dir=cache_dir)
     pageindex.build(_documents(artifact_dir, records))
     _write_json_file(index_dir / "config.json", {**cfg, "force_reindex": False}, indent=2)
     _write_json_file(
         path,
         {
             "method": "pageindex",
-            "logic": "vector_pageindex_rag_eval.PageIndexRAG",
+            "logic": PAGEINDEX_LOGIC,
             "artifact_revision": revision,
             "document_count": len(records),
             "setup_usage": pageindex.setup_usage.to_dict(),
@@ -362,13 +373,19 @@ def load_pageindex_hits(artifact_dir: Path, query: str, *, top_k: int = 8) -> li
     path = index_dir / "index.json"
     if not path.exists():
         raise FileNotFoundError(f"Missing PageIndex index: {path}")
+    index_payload = _read_json_file(path)
+    if not isinstance(index_payload, dict) or index_payload.get("logic") != PAGEINDEX_LOGIC:
+        raise RuntimeError(
+            "PageIndex index was not built with the official PageIndex adapter. "
+            "Rebuild it with `uv run grid-build-indexes --methods pageindex --rebuild-indexes`."
+        )
     cfg = _read_json_file(index_dir / "config.json")
     if not isinstance(cfg, dict):
         raise FileNotFoundError(f"Missing PageIndex index config: {index_dir / 'config.json'}")
     cfg["force_reindex"] = False
     cfg["selected_nodes"] = max(int(cfg.get("selected_nodes", 1)), top_k)
     llm = make_pageindex_llm({})
-    pageindex = PageIndexRAG(cfg, llm, cache_dir=index_dir / "cache")
+    pageindex = OfficialPageIndexRAG(cfg, llm, cache_dir=index_dir / "cache")
     pageindex.build(_documents(artifact_dir))
     output = pageindex.query(query)
     return [
@@ -585,7 +602,7 @@ def build_all(
             show_progress=show_progress,
         )
     if "pageindex" in selected:
-        print("Building vector_pageindex_rag_eval PageIndexRAG index...")
+        print("Building vector_pageindex_rag_eval OfficialPageIndexRAG index...")
         build_pageindex(
             artifact_dir,
             anthropic_batch=anthropic_batch,

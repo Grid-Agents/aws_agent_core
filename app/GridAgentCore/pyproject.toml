@@ -42,7 +42,12 @@ grid-upload-artifacts = "grid_agent_core.upload_artifacts:main"
 grid-local-api = "grid_agent_core.local_api:main"
 
 [tool.setuptools]
-packages = ["grid_agent_core", "grid_agent_core.graphrag", "grid_agent_core.rag_compat"]
+packages = [
+    "grid_agent_core",
+    "grid_agent_core.graphrag",
+    "grid_agent_core.rag_compat",
+    "grid_agent_core.rag_compat.official_pageindex",
+]
 py-modules = ["main", "local_chat"]
 
 [tool.pytest.ini_options]

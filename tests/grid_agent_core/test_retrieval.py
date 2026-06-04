@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import sys
 import types
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -10,6 +12,30 @@ from grid_agent_core.indexes import build_pageindex, build_vector_index
 from grid_agent_core.models import DocumentRecord, FigureRecord, PageRecord
 from grid_agent_core.rag_compat.llm import FakeLLM
 from grid_agent_core.retrieval import GridRetrievalRepository
+
+
+async def fake_md_to_tree(**_kwargs):
+    return {
+        "doc_name": "doc",
+        "doc_description": "Gate readiness and queue management document.",
+        "line_count": 6,
+        "structure": [
+            {
+                "title": "grid/doc.txt",
+                "node_id": "0000",
+                "line_num": 1,
+                "summary": "Gate readiness and queue management",
+                "nodes": [
+                    {
+                        "title": "Virtual page 1",
+                        "node_id": "0001",
+                        "line_num": 3,
+                        "summary": "Gate readiness and CNDM queue management",
+                    }
+                ],
+            }
+        ],
+    }
 
 
 def write_artifact_fixture(tmp_path):
@@ -91,6 +117,14 @@ def test_vector_and_pageindex_indexes_are_queryable(tmp_path, monkeypatch) -> No
     monkeypatch.setenv("GRID_VECTOR_RERANKER_ENABLED", "0")
     monkeypatch.setenv("GRID_PAGEINDEX_BUILD_WITH_LLM", "0")
     monkeypatch.setattr("grid_agent_core.indexes.make_pageindex_llm", lambda _cfg: FakeLLM("{}"))
+    monkeypatch.setattr(
+        "grid_agent_core.rag_compat.official_pageindex.rag.OfficialPageIndexRAG._load_official_modules",
+        lambda _self: SimpleNamespace(
+            md_to_tree=fake_md_to_tree,
+            utils=SimpleNamespace(),
+            source="fake-official-pageindex",
+        ),
+    )
     artifact_dir = write_artifact_fixture(tmp_path)
 
     build_vector_index(
@@ -99,12 +133,16 @@ def test_vector_and_pageindex_indexes_are_queryable(tmp_path, monkeypatch) -> No
         chunk_strategy="fixed",
     )
     build_pageindex(artifact_dir)
+    pageindex_meta = json.loads(
+        (artifact_dir / "indexes" / "pageindex" / "index.json").read_text(encoding="utf-8")
+    )
     repo = GridRetrievalRepository(artifact_dir)
 
     vector = repo.search("vector", "readiness evidence")
     pageindex = repo.search("pageindex", "queue management")
 
     assert vector[0].artifact_source == "vector"
+    assert pageindex_meta["logic"] == "vector_pageindex_rag_eval.OfficialPageIndexRAG"
     assert pageindex[0].artifact_source == "pageindex"
 
 

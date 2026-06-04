@@ -77,8 +77,8 @@ Runtime model calls use Amazon Bedrock through IAM. Parse-time VLM enrichment, V
 - `app/GridAgentCore/grid_agent_core/corpus.py` - Grid PDF parsing, text corpus, manifest, page offsets, content hashes.
 - `app/GridAgentCore/grid_agent_core/llama_parse_agentic.py` - LlamaParse Agentic parser wrapper.
 - `app/GridAgentCore/grid_agent_core/multimodal_enrichment.py` - figure-crop detection, VLM descriptions, and figure artifacts.
-- `app/GridAgentCore/grid_agent_core/indexes.py` - vector, PageIndex, and GraphRAG index builders.
-- `app/GridAgentCore/grid_agent_core/rag_compat/` - vendored compatibility layer for the sibling vector/PageIndex implementation.
+- `app/GridAgentCore/grid_agent_core/indexes.py` - vector, official PageIndex, and GraphRAG index builders.
+- `app/GridAgentCore/grid_agent_core/rag_compat/` - vendored compatibility layer for sibling vector retrieval plus the official PageIndex adapter.
 - `app/GridAgentCore/grid_agent_core/graphrag/` - rlm-eval-style GraphRAG worker protocol, canonical chunks, metadata, and worker.
 - `app/GridAgentCore/grid_agent_core/retrieval.py` - retrieval repository and figure attachment logic.
 - `app/GridAgentCore/grid_agent_core/upload_artifacts.py` - S3 artifact upload CLI.
@@ -239,7 +239,7 @@ Use `sentence_transformers` only for local/offline experimentation after install
 
 ### PageIndex
 
-The PageIndex implementation follows the sibling `/Users/maoxunhuang/Desktop/GridAgents/vector_pageindex_rag_eval/` `PageIndexRAG` logic through `grid_agent_core.rag_compat.pageindex_rag`.
+The `pageindex` method uses the sibling `/Users/maoxunhuang/Desktop/GridAgents/vector_pageindex_rag_eval/` `pageindex_official` implementation through `grid_agent_core.rag_compat.official_pageindex`. It auto-loads or clones VectifyAI's official self-hosted PageIndex repo, converts Grid text into Markdown virtual-page headings, calls the upstream Markdown tree builder, and maps returned nodes back to original Grid character offsets.
 
 Build PageIndex:
 
@@ -249,7 +249,7 @@ uv run grid-build-indexes \
   --methods pageindex
 ```
 
-PageIndex builds offset-preserving virtual pages, constructs a table-of-contents tree, optionally semanticizes page and parent nodes with an LLM, and queries by selecting documents then nodes. If `ANTHROPIC_API_KEY` is set, the compatibility LLM uses Anthropic direct API. Otherwise it uses the configured Bedrock Claude model through `bedrock-runtime`.
+PageIndex builds offset-preserving Markdown virtual pages, constructs the official PageIndex tree, optionally asks an LLM for PageIndex summaries/descriptions, and queries by selecting documents then relevant tree nodes. If `ANTHROPIC_API_KEY` is set, the compatibility LLM uses Anthropic direct API. Otherwise it uses the configured Bedrock Claude model through `bedrock-runtime`.
 
 For a cheaper smoke build:
 
@@ -259,7 +259,7 @@ GRID_PAGEINDEX_BUILD_WITH_LLM=0 uv run grid-build-indexes \
   --methods pageindex
 ```
 
-`--anthropic-batch` is intentionally unsupported for this exact PageIndex implementation. Build without that flag.
+`--anthropic-batch` is intentionally unsupported for this official PageIndex adapter. Build without that flag.
 
 ### GraphRAG
 
@@ -587,6 +587,10 @@ Vector/PageIndex index-time:
 - `GRID_VECTOR_SEMANTIC_BREAK_PERCENTILE`
 - `GRID_VECTOR_SEMANTIC_WINDOW_SIZE`
 - `GRID_VECTOR_SEMANTIC_MIN_CHUNK_SIZE`
+- `GRID_PAGEINDEX_REPO_URL`
+- `GRID_PAGEINDEX_REPO_REF`
+- `GRID_PAGEINDEX_REPO_PATH`
+- `GRID_PAGEINDEX_AUTO_CLONE_REPO`
 - `GRID_PAGEINDEX_BUILD_WITH_LLM`
 - `GRID_PAGEINDEX_*` budget and selection controls
 

@@ -12,6 +12,7 @@ from grid_agent_core.indexes import (
     build_graphrag_index,
     build_graphrag_prerequisites,
     build_vector_index,
+    load_pageindex_hits,
 )
 from grid_agent_core.models import DocumentRecord, PageRecord
 from grid_agent_core.corpus import write_manifest
@@ -65,6 +66,20 @@ def test_vector_index_reuses_cached_chunks(tmp_path, monkeypatch) -> None:
     )
 
     assert resumed_path.exists()
+
+
+def test_pageindex_query_rejects_custom_index_artifact(tmp_path) -> None:
+    artifact_dir = write_graphrag_fixture(tmp_path)
+    index_dir = artifact_dir / "indexes" / "pageindex"
+    index_dir.mkdir(parents=True)
+    (index_dir / "index.json").write_text(
+        json.dumps({"logic": "vector_pageindex_rag_eval.PageIndexRAG"}),
+        encoding="utf-8",
+    )
+    (index_dir / "config.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="official PageIndex adapter"):
+        load_pageindex_hits(artifact_dir, "grid")
 
 
 def write_graphrag_fixture(tmp_path):

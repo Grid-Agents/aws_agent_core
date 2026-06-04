@@ -84,7 +84,7 @@ User
   match the source PDF hash and selected parser.
 - Build Grid-specific indexes:
   - vector index
-  - PageIndex index
+  - official PageIndex index
   - GraphRAG index
 - Vector and PageIndex builds cache per-document parts and skip fresh final
   indexes by artifact revision. Re-run the same command to resume after a
@@ -103,9 +103,14 @@ Implemented entrypoints:
 cd app/GridAgentCore
 uv run grid-parse-documents --parser llamaparse-agentic --force
 uv run grid-build-indexes --methods vector,pageindex
-uv run grid-build-indexes --methods pageindex --anthropic-batch
 uv run grid-build-indexes --methods graphrag
 ```
+
+The `pageindex` method is wired to the sibling
+`vector_pageindex_rag_eval` `pageindex_official` implementation, not the custom
+`PageIndexRAG` method. It loads or clones VectifyAI's official self-hosted
+PageIndex repo and calls the upstream Markdown tree builder. The official
+adapter does not support `--anthropic-batch`; build without that flag.
 
 GraphRAG is built by the local `grid_agent_core.graphrag` Microsoft GraphRAG
 worker copied into this project. It no longer depends on the sibling `rlm-eval`
