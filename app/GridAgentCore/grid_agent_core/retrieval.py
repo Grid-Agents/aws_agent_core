@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import json
-import re
 import time
 from pathlib import Path
 from typing import Any
 
 from .corpus import document_text, load_manifest, page_for_offset
-from .indexes import SearchHit, load_pageindex_hits, load_vector_hits, tokenize
+from .indexes import SearchHit, load_graphrag_hits, load_pageindex_hits, load_vector_hits, tokenize
 from .models import DocumentRecord, Evidence, FigureRecord
 from .settings import s3_bucket, s3_prefix
 
@@ -42,7 +40,7 @@ class GridRetrievalRepository:
         elif method == "find":
             hits = self._find_hits(query, top_k=top_k)
         elif method == "graphrag":
-            hits = self._graphrag_hits(query, top_k=top_k)
+            hits = load_graphrag_hits(self.artifact_dir, query, top_k=top_k)
         else:
             raise ValueError(f"Unsupported retrieval method: {method}")
         evidence = [self._evidence(index, hit) for index, hit in enumerate(hits, start=1)]
@@ -155,110 +153,6 @@ class GridRetrievalRepository:
                 if len(hits) >= top_k:
                     return hits[:top_k]
         return hits[:top_k]
-
-    def _graphrag_hits(self, query: str, *, top_k: int) -> list[SearchHit]:
-        output_dir = self.artifact_dir / "graphrag_data" / "graph_index" / "graphrag_ms" / "output"
-        required = [
-            output_dir / "documents.parquet",
-            output_dir / "text_units.parquet",
-            output_dir / "entities.parquet",
-            output_dir / "relationships.parquet",
-            output_dir / "community_reports.parquet",
-            output_dir / "communities.parquet",
-        ]
-        missing = [path.name for path in required if not path.exists()]
-        if missing:
-            raise FileNotFoundError(
-                f"Missing GraphRAG parquet files in {output_dir}: {missing}"
-            )
-        import pandas as pd
-
-        text_units = pd.read_parquet(output_dir / "text_units.parquet")
-        entities = pd.read_parquet(output_dir / "entities.parquet")
-        relationships = pd.read_parquet(output_dir / "relationships.parquet")
-        reports = pd.read_parquet(output_dir / "community_reports.parquet")
-        tokens = set(tokenize(query))
-        if not tokens:
-            return []
-
-        seeds: set[str] = set()
-        for frame, columns in (
-            (entities, ("title", "type", "description", "text_unit_ids")),
-            (relationships, ("source", "target", "description", "text_unit_ids")),
-            (reports, ("title", "summary", "full_content", "text_unit_ids")),
-        ):
-            for _, row in frame.iterrows():
-                haystack = " ".join(str(row.get(column) or "") for column in columns[:-1])
-                if tokens.intersection(tokenize(haystack)):
-                    for value in _ids(row.get("text_unit_ids")):
-                        seeds.add(value)
-
-        hits: list[SearchHit] = []
-        for _, row in text_units.iterrows():
-            text = str(row.get("text") or "")
-            direct = len(tokens.intersection(tokenize(text)))
-            seeded = str(row.get("id") or "") in seeds
-            if not direct and not seeded:
-                continue
-            document_id = str(row.get("document_id") or "")
-            if document_id not in self.by_id:
-                document_id = _match_document_id(document_id, self.by_id)
-            if not document_id:
-                continue
-            corpus_text = self.text(document_id)
-            start = _find_span_start(corpus_text, text)
-            end = start + len(text) if start >= 0 else min(len(corpus_text), len(text))
-            score = float(direct) + (1.5 if seeded else 0.0)
-            hits.append(
-                SearchHit(
-                    document_id=document_id,
-                    start_char=max(0, start),
-                    end_char=max(0, end),
-                    text=text,
-                    score=score,
-                    source="graphrag",
-                    section="GraphRAG text unit",
-                )
-            )
-        return sorted(hits, key=lambda hit: hit.score, reverse=True)[: min(top_k, MAX_GRAPHRAG_HITS)]
-
-
-def _ids(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-            if isinstance(parsed, list):
-                return [str(item) for item in parsed]
-        except json.JSONDecodeError:
-            return [value]
-    if isinstance(value, (list, tuple, set)):
-        return [str(item) for item in value]
-    return [str(value)]
-
-
-def _match_document_id(value: str, by_id: dict[str, DocumentRecord]) -> str:
-    if value in by_id:
-        return value
-    tail = Path(value).name
-    for document_id in by_id:
-        if Path(document_id).name == tail:
-            return document_id
-    return ""
-
-
-def _find_span_start(corpus_text: str, snippet: str) -> int:
-    if not snippet:
-        return 0
-    start = corpus_text.find(snippet)
-    if start >= 0:
-        return start
-    compact = re.sub(r"\s+", " ", snippet).strip()
-    if len(compact) < 40:
-        return 0
-    return corpus_text.find(compact[:120])
-
 
 def _s3_uri_for_artifact(relative_path: str) -> str:
     bucket = s3_bucket()

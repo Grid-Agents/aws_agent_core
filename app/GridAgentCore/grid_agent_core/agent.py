@@ -17,7 +17,13 @@ from typing import Any
 from .artifacts import artifact_revision, ensure_artifacts, runtime_artifact_dir
 from .models import Evidence, TraceEvent
 from .retrieval import GridRetrievalRepository
-from .settings import RETRIEVAL_METHODS, SUBAGENT_NAME, aws_region, model_id
+from .settings import (
+    DEFAULT_RETRIEVAL_METHODS,
+    RETRIEVAL_METHODS,
+    SUBAGENT_NAME,
+    aws_region,
+    model_id,
+)
 
 MAX_TOOL_ACTIONS = 28
 MAX_AGENT_TURNS = 18
@@ -54,7 +60,7 @@ def resolve_claude_cli_path() -> str | None:
 
 def normalize_methods(methods: Any) -> list[str]:
     if methods is None:
-        return list(RETRIEVAL_METHODS)
+        return list(DEFAULT_RETRIEVAL_METHODS)
     if not isinstance(methods, list):
         raise ValueError("'methods' must be a list when provided.")
     selected = []
@@ -63,13 +69,13 @@ def normalize_methods(methods: Any) -> list[str]:
             raise ValueError(f"Unsupported retrieval method: {method}")
         if method not in selected:
             selected.append(method)
-    return selected or list(RETRIEVAL_METHODS)
+    return selected or list(DEFAULT_RETRIEVAL_METHODS)
 
 
 def _search_tool_description(method: str) -> str:
     return {
-        "vector": "Semantic-style retrieval over Grid chunks; evidence may include optional figure metadata.",
-        "pageindex": "Page/page-summary retrieval; evidence may include optional figure metadata.",
+        "vector": "Semantic chunk retrieval over Grid text; evidence may include optional figure metadata.",
+        "pageindex": "PageIndex tree retrieval over Grid text; evidence may include optional figure metadata.",
         "graphrag": "GraphRAG retrieval over Grid entity/text-unit artifacts; evidence may include optional figure metadata.",
         "find": "Exact keyword and phrase search across Grid text; evidence may include optional figure metadata.",
     }[method]

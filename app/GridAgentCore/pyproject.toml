@@ -14,11 +14,14 @@ dependencies = [
     "claude-agent-sdk>=0.2.87,<0.3",
     "fastapi>=0.115,<1",
     "llama-cloud>=1.4.1,<2",
+    "numpy>=1.26,<3",
     "pandas>=2.2,<3",
     "pyarrow>=16,<23",
     "pymupdf>=1.24,<2",
+    "pysbd>=0.3.4,<0.4",
     "pypdf>=4,<7",
     "python-dotenv>=1.0.1,<2",
+    "tqdm>=4.66,<5",
     "uvicorn[standard]>=0.34,<1",
     "voyageai>=0.3.7,<1",
 ]
@@ -39,7 +42,7 @@ grid-upload-artifacts = "grid_agent_core.upload_artifacts:main"
 grid-local-api = "grid_agent_core.local_api:main"
 
 [tool.setuptools]
-packages = ["grid_agent_core", "grid_agent_core.graphrag"]
+packages = ["grid_agent_core", "grid_agent_core.graphrag", "grid_agent_core.rag_compat"]
 py-modules = ["main", "local_chat"]
 
 [tool.pytest.ini_options]

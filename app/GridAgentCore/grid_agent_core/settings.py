@@ -11,6 +11,7 @@ DEFAULT_ARTIFACT_DIR = PROJECT_ROOT / ".grid_artifacts"
 DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 DEFAULT_BATCH_MODEL = "claude-3-5-haiku-20241022"
 RETRIEVAL_METHODS = ("vector", "pageindex", "graphrag", "find")
+DEFAULT_RETRIEVAL_METHODS = ("vector", "pageindex", "find")
 SUBAGENT_NAME = "span-retriever"
 
 

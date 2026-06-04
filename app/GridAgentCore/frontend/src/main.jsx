@@ -14,7 +14,7 @@ const DEFAULT_PROMPT =
 
 function App() {
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
-  const [methods, setMethods] = useState(["vector", "pageindex", "graphrag", "find"]);
+  const [methods, setMethods] = useState(["vector", "pageindex", "find"]);
   const [allowSdkFileTools, setAllowSdkFileTools] = useState(false);
   const [enableSubagents, setEnableSubagents] = useState(true);
   const [events, setEvents] = useState([]);

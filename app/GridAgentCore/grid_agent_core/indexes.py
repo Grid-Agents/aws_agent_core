@@ -5,29 +5,28 @@ import datetime as dt
 import hashlib
 import importlib.util
 import json
-import math
 import os
 import re
 import subprocess
 import sys
 import time
-from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from anthropic import Anthropic
-
 from .corpus import document_text, load_manifest
 from .graphrag.canonical_chunks import build_canonical_chunks, write_canonical_chunks
 from .graphrag.index_meta import IndexMeta, index_is_fresh, write_index_meta
-from .graphrag.worker_protocol import index_request, parse_worker_stdout
+from .graphrag.span_resolver import resolve_spans
+from .graphrag.worker_protocol import index_request, parse_worker_stdout, query_request
 from .progress import ProgressBar
-from .settings import DEFAULT_ARTIFACT_DIR, batch_model
+from .rag_compat.grid_llm import make_pageindex_llm
+from .rag_compat.pageindex_rag import PageIndexRAG
+from .rag_compat.types import Document
+from .rag_compat.vector_rag import VectorRAG
+from .settings import DEFAULT_ARTIFACT_DIR
 
-TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{1,}")
-CHUNK_SIZE = 1800
-CHUNK_OVERLAP = 220
+TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_'-]*")
 GRAPHRAG_METHOD = "graphrag_ms"
 GRAPHRAG_REQUIRED_MODULES = (
     "graphrag",
@@ -36,10 +35,19 @@ GRAPHRAG_REQUIRED_MODULES = (
 )
 
 
-def _json_hash(payload: Any) -> str:
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+@dataclass(frozen=True)
+class SearchHit:
+    document_id: str
+    start_char: int
+    end_char: int
+    text: str
+    score: float
+    source: str
+    section: str = ""
+
+
+def tokenize(text: str) -> list[str]:
+    return [match.group(0).casefold() for match in TOKEN.finditer(text)]
 
 
 def _artifact_revision(artifact_dir: Path) -> str:
@@ -56,15 +64,10 @@ def _artifact_revision(artifact_dir: Path) -> str:
     ).hexdigest()
 
 
-def _part_path(parts_dir: Path, document_id: str) -> Path:
-    digest = hashlib.sha256(document_id.encode("utf-8")).hexdigest()[:16]
-    return parts_dir / f"{digest}.json"
-
-
 def _write_json_file(path: Path, payload: Any, *, indent: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_suffix(path.suffix + ".tmp")
-    temp_path.write_text(json.dumps(payload, indent=indent), encoding="utf-8")
+    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=indent), encoding="utf-8")
     temp_path.replace(path)
 
 
@@ -86,242 +89,214 @@ def _index_is_current(index_dir: Path, *, expected: dict[str, Any]) -> bool:
 
 
 def _write_index_meta(index_dir: Path, payload: dict[str, Any]) -> None:
-    meta = {
-        **payload,
-        "built_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+    _write_json_file(
+        index_dir / "index_meta.json",
+        {
+            **payload,
+            "built_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        },
+        indent=2,
+    )
+
+
+def _documents(artifact_dir: Path, records: list[Any] | None = None) -> list[Document]:
+    return [
+        Document(record.document_id, document_text(artifact_dir, record))
+        for record in (records or load_manifest(artifact_dir))
+    ]
+
+
+def _document_payload(records: list[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "document_id": record.document_id,
+            "title": record.title,
+            "category": record.category,
+            "filename": record.filename,
+            "text_sha256": record.text_sha256,
+        }
+        for record in records
+    ]
+
+
+def _vector_config(
+    *,
+    provider: str,
+    chunk_strategy: str,
+    search_strategy: str,
+    cache_dir: Path,
+    force_reindex: bool,
+) -> dict[str, Any]:
+    provider = _normalize_vector_provider(provider)
+    cfg: dict[str, Any] = {
+        "cache_dir": str(cache_dir),
+        "force_reindex": force_reindex,
+        "chunk_strategy": chunk_strategy,
+        "search_strategy": search_strategy,
+        "chunk_size": int(os.getenv("GRID_VECTOR_CHUNK_SIZE", "1200")),
+        "chunk_overlap": int(os.getenv("GRID_VECTOR_CHUNK_OVERLAP", "120")),
+        "semantic_chunking": {
+            "break_percentile": float(os.getenv("GRID_VECTOR_SEMANTIC_BREAK_PERCENTILE", "82")),
+            "window_size": int(os.getenv("GRID_VECTOR_SEMANTIC_WINDOW_SIZE", "3")),
+            "min_chunk_size": _optional_int(os.getenv("GRID_VECTOR_SEMANTIC_MIN_CHUNK_SIZE")),
+        },
+        "hybrid": {
+            "vector_weight": float(os.getenv("GRID_VECTOR_HYBRID_VECTOR_WEIGHT", "0.65")),
+            "bm25_weight": float(os.getenv("GRID_VECTOR_HYBRID_BM25_WEIGHT", "0.35")),
+            "bm25_k1": float(os.getenv("GRID_VECTOR_HYBRID_BM25_K1", "1.5")),
+            "bm25_b": float(os.getenv("GRID_VECTOR_HYBRID_BM25_B", "0.75")),
+        },
+        "top_k": int(os.getenv("GRID_VECTOR_TOP_K", "20")),
+        "batch_size": int(os.getenv("GRID_VECTOR_BATCH_SIZE", "128")),
     }
-    _write_json_file(index_dir / "index_meta.json", meta, indent=2)
-
-
-def tokenize(text: str) -> list[str]:
-    return [token.casefold() for token in TOKEN.findall(text)]
-
-
-def make_chunks(text: str, *, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[tuple[int, int, str]]:
-    chunks: list[tuple[int, int, str]] = []
-    start = 0
-    while start < len(text):
-        end = min(len(text), start + chunk_size)
-        if end < len(text):
-            boundary = max(text.rfind("\n\n", start, end), text.rfind(". ", start, end))
-            if boundary > start + chunk_size // 2:
-                end = boundary + 1
-        chunk = text[start:end].strip()
-        if chunk:
-            chunk_start = start + (len(text[start:end]) - len(text[start:end].lstrip()))
-            chunks.append((chunk_start, chunk_start + len(chunk), chunk))
-        if end >= len(text):
-            break
-        start = max(start + 1, end - overlap)
-    return chunks
-
-
-def _term_vector(text: str) -> dict[str, float]:
-    counts = Counter(tokenize(text))
-    length = math.sqrt(sum(value * value for value in counts.values())) or 1.0
-    return {term: value / length for term, value in counts.items()}
-
-
-def _cosine(left: dict[str, float], right: dict[str, float]) -> float:
-    if len(left) > len(right):
-        left, right = right, left
-    return sum(weight * right.get(term, 0.0) for term, weight in left.items())
-
-
-def _voyage_embeddings(texts: list[str], *, input_type: str) -> list[list[float]]:
-    api_key = os.getenv("VOYAGE_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "VOYAGE_API_KEY is required for --vector-provider voyage. "
-            "Use --vector-provider local for the deterministic local fallback."
+    if provider == "voyage":
+        cfg.update(
+            {
+                "embedding_provider": "voyage",
+                "embedding_model": os.getenv("GRID_VECTOR_EMBEDDING_MODEL", "voyage-law-2"),
+                "query_instruction": "",
+                "embedding_output_dimension": _optional_int(os.getenv("GRID_VECTOR_EMBEDDING_OUTPUT_DIMENSION")),
+                "embedding_truncation": _env_bool("GRID_VECTOR_EMBEDDING_TRUNCATION", True),
+                "reranker": {
+                    "enabled": _env_bool("GRID_VECTOR_RERANKER_ENABLED", True),
+                    "provider": "voyage",
+                    "model": os.getenv("GRID_VECTOR_RERANKER_MODEL", "rerank-2"),
+                    "top_k": int(os.getenv("GRID_VECTOR_RERANK_TOP_K", "8")),
+                },
+            }
         )
-    import voyageai
-
-    client = voyageai.Client(api_key=api_key)
-    result = client.embed(texts, model="voyage-law-2", input_type=input_type)
-    return [list(vector) for vector in result.embeddings]
+    else:
+        cfg.update(
+            {
+                "embedding_provider": "sentence_transformers",
+                "embedding_model": os.getenv("GRID_VECTOR_EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5"),
+                "query_instruction": os.getenv(
+                    "GRID_VECTOR_QUERY_INSTRUCTION",
+                    "Represent this sentence for searching relevant passages: ",
+                ),
+                "batch_size": int(os.getenv("GRID_VECTOR_BATCH_SIZE", "8")),
+                "reranker": {
+                    "enabled": _env_bool("GRID_VECTOR_RERANKER_ENABLED", True),
+                    "provider": "sentence_transformers",
+                    "model": os.getenv("GRID_VECTOR_RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"),
+                    "top_k": int(os.getenv("GRID_VECTOR_RERANK_TOP_K", "8")),
+                },
+            }
+        )
+    return cfg
 
 
 def build_vector_index(
     artifact_dir: Path,
     *,
-    provider: str = "local",
+    provider: str = "voyage",
+    chunk_strategy: str = "semantic",
+    search_strategy: str = "hybrid",
     resume: bool = True,
     rebuild: bool = False,
     show_progress: bool = False,
 ) -> Path:
+    del show_progress
     records = load_manifest(artifact_dir)
     revision = _artifact_revision(artifact_dir)
     index_dir = artifact_dir / "indexes" / "vector"
-    index_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir = index_dir / "cache"
     path = index_dir / "index.json"
+    cfg = _vector_config(
+        provider=provider,
+        chunk_strategy=chunk_strategy,
+        search_strategy=search_strategy,
+        cache_dir=cache_dir,
+        force_reindex=rebuild or not resume,
+    )
     expected_meta = {
         "method": "vector",
         "artifact_revision": revision,
-        "provider": provider,
+        "logic": "vector_pageindex_rag_eval.VectorRAG",
+        "embedding_provider": cfg["embedding_provider"],
+        "embedding_model": cfg["embedding_model"],
+        "chunk_strategy": chunk_strategy,
+        "search_strategy": search_strategy,
     }
-    if not rebuild and _index_is_current(index_dir, expected=expected_meta):
+    if resume and not rebuild and _index_is_current(index_dir, expected=expected_meta):
         print("vector: index fresh, skipping (use --rebuild-indexes to force)")
         return path
 
-    parts_dir = index_dir / "parts" / provider
-    chunks: list[dict[str, Any]] = []
-    progress = ProgressBar("Vector index", len(records), enabled=show_progress)
-    try:
-        for record in records:
-            part = _load_vector_part(parts_dir, record, provider=provider) if resume else None
-            detail = f"resume {record.filename}"
-            if part is None:
-                part = _build_vector_part(artifact_dir, record, provider=provider)
-                _write_json_file(_part_path(parts_dir, record.document_id), part)
-                detail = f"built {record.filename}"
-            chunks.extend(list(part.get("chunks") or []))
-            progress.advance(detail=detail)
-    except Exception:
-        progress.fail()
-        raise
-    progress.close()
-
-    payload = {"provider": provider, "chunk_count": len(chunks), "chunks": chunks}
-    _write_json_file(path, payload)
+    vector = VectorRAG(cfg, cache_dir=cache_dir)
+    vector.build(_documents(artifact_dir, records))
+    chunk_count = len(vector.chunks)
+    _write_json_file(index_dir / "config.json", {**cfg, "force_reindex": False}, indent=2)
+    _write_json_file(
+        path,
+        {
+            "method": "vector",
+            "logic": "vector_pageindex_rag_eval.VectorRAG",
+            "artifact_revision": revision,
+            "document_count": len(records),
+            "chunk_count": chunk_count,
+            "documents": _document_payload(records),
+        },
+        indent=2,
+    )
     _write_index_meta(
         index_dir,
         {
             **expected_meta,
             "document_count": len(records),
-            "chunk_count": len(chunks),
+            "chunk_count": chunk_count,
         },
     )
     return path
 
 
-def _build_vector_part(artifact_dir: Path, record: Any, *, provider: str) -> dict[str, Any]:
-    text = document_text(artifact_dir, record)
-    chunks: list[dict[str, Any]] = []
-    for index, (start, end, chunk) in enumerate(make_chunks(text), start=1):
-        chunks.append(
-            {
-                "chunk_id": f"{record.document_id}#c{index:04d}",
-                "document_id": record.document_id,
-                "start_char": start,
-                "end_char": end,
-                "text": chunk,
-            }
+def load_vector_hits(artifact_dir: Path, query: str, *, top_k: int = 8) -> list[SearchHit]:
+    index_dir = artifact_dir / "indexes" / "vector"
+    path = index_dir / "index.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Missing vector index: {path}")
+    cfg = _read_json_file(index_dir / "config.json")
+    if not isinstance(cfg, dict):
+        raise FileNotFoundError(f"Missing vector index config: {index_dir / 'config.json'}")
+    cfg = _query_vector_config(cfg, top_k=top_k)
+    vector = VectorRAG(cfg, cache_dir=index_dir / "cache")
+    vector.build(_documents(artifact_dir))
+    output = vector.query(query)
+    return [
+        SearchHit(
+            document_id=span.document_id,
+            start_char=span.start_char,
+            end_char=span.end_char,
+            text=span.text,
+            score=span.score,
+            source="vector",
+            section=str(span.metadata.get("chunk_title", "")),
         )
-    if provider == "voyage" and chunks:
-        embeddings = _voyage_embeddings(
-            [chunk["text"] for chunk in chunks],
-            input_type="document",
-        )
-        for chunk, embedding in zip(chunks, embeddings):
-            chunk["embedding"] = embedding
-    elif provider == "local":
-        for chunk in chunks:
-            chunk["vector"] = _term_vector(chunk["text"])
-    elif provider != "voyage":
-        raise ValueError("vector provider must be 'voyage' or 'local'.")
+        for span in output.spans[:top_k]
+    ]
+
+
+def _pageindex_config(*, cache_dir: Path, force_reindex: bool) -> dict[str, Any]:
     return {
-        "method": "vector",
-        "provider": provider,
-        "document_id": record.document_id,
-        "text_sha256": record.text_sha256,
-        "chunks": chunks,
+        "cache_dir": str(cache_dir),
+        "force_reindex": force_reindex,
+        "build_with_llm": _env_bool("GRID_PAGEINDEX_BUILD_WITH_LLM", True),
+        "virtual_page_target_tokens": int(os.getenv("GRID_PAGEINDEX_VIRTUAL_PAGE_TARGET_TOKENS", "900")),
+        "virtual_page_max_tokens": int(os.getenv("GRID_PAGEINDEX_VIRTUAL_PAGE_MAX_TOKENS", "1200")),
+        "toc_check_units": int(os.getenv("GRID_PAGEINDEX_TOC_CHECK_UNITS", "20")),
+        "max_units_per_node": int(os.getenv("GRID_PAGEINDEX_MAX_UNITS_PER_NODE", "10")),
+        "max_tokens_per_node": int(os.getenv("GRID_PAGEINDEX_MAX_TOKENS_PER_NODE", "20000")),
+        "node_summary_max_tokens": int(os.getenv("GRID_PAGEINDEX_NODE_SUMMARY_MAX_TOKENS", "220")),
+        "root_summary_max_tokens": int(os.getenv("GRID_PAGEINDEX_ROOT_SUMMARY_MAX_TOKENS", "260")),
+        "selected_documents": int(os.getenv("GRID_PAGEINDEX_SELECTED_DOCUMENTS", "5")),
+        "max_document_catalog_chars": int(os.getenv("GRID_PAGEINDEX_MAX_DOCUMENT_CATALOG_CHARS", "120000")),
+        "max_document_catalog_candidates": int(os.getenv("GRID_PAGEINDEX_MAX_DOCUMENT_CATALOG_CANDIDATES", "80")),
+        "max_tree_chars": int(os.getenv("GRID_PAGEINDEX_MAX_TREE_CHARS", "24000")),
+        "selected_nodes": int(os.getenv("GRID_PAGEINDEX_SELECTED_NODES", "8")),
+        "max_retrieved_chars_per_node": int(os.getenv("GRID_PAGEINDEX_MAX_RETRIEVED_CHARS_PER_NODE", "5000")),
+        "record_reasoning_trajectory": _env_bool("GRID_PAGEINDEX_RECORD_REASONING_TRAJECTORY", True),
+        "reasoning_max_catalog_chars": int(os.getenv("GRID_PAGEINDEX_REASONING_MAX_CATALOG_CHARS", "12000")),
+        "reasoning_max_node_summary_chars": int(os.getenv("GRID_PAGEINDEX_REASONING_MAX_NODE_SUMMARY_CHARS", "320")),
     }
-
-
-def _load_vector_part(parts_dir: Path, record: Any, *, provider: str) -> dict[str, Any] | None:
-    payload = _read_json_file(_part_path(parts_dir, record.document_id))
-    if not isinstance(payload, dict):
-        return None
-    expected = {
-        "method": "vector",
-        "provider": provider,
-        "document_id": record.document_id,
-        "text_sha256": record.text_sha256,
-    }
-    if not all(payload.get(key) == value for key, value in expected.items()):
-        return None
-    chunks = payload.get("chunks")
-    return payload if isinstance(chunks, list) else None
-
-
-def _page_summary(text: str, max_chars: int = 900) -> str:
-    compact = " ".join(text.split())
-    return compact[:max_chars]
-
-
-def _batch_requests(records: list[Any], artifact_dir: Path, model: str) -> list[dict[str, Any]]:
-    requests = []
-    for record in records:
-        text = document_text(artifact_dir, record)
-        for page in record.pages:
-            page_text = text[page.start_char : page.end_char]
-            requests.append(
-                {
-                    "custom_id": f"{record.document_id}|p{page.page}",
-                    "params": {
-                        "model": model,
-                        "max_tokens": 180,
-                        "temperature": 0,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": (
-                                    "Summarize this Grid regulation page for retrieval. "
-                                    "Return one concise paragraph with key obligations, "
-                                    "definitions, codes, dates, and entities.\n\n"
-                                    f"Document: {record.title}\nPage: {page.page}\n\n{page_text[:12000]}"
-                                ),
-                            }
-                        ],
-                    },
-                }
-            )
-    return requests
-
-
-def submit_pageindex_batch(artifact_dir: Path, *, model: str, resume: bool = True) -> str:
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is required for --anthropic-batch.")
-    records = load_manifest(artifact_dir)
-    requests = _batch_requests(records, artifact_dir, model)
-    batch_dir = artifact_dir / "indexes" / "pageindex"
-    batch_dir.mkdir(parents=True, exist_ok=True)
-    request_hash = _json_hash(requests)
-    batch_id_path = batch_dir / "batch_id.txt"
-    batch_meta_path = batch_dir / "batch_meta.json"
-    batch_meta = _read_json_file(batch_meta_path)
-    if (
-        resume
-        and batch_id_path.exists()
-        and isinstance(batch_meta, dict)
-        and batch_meta.get("request_hash") == request_hash
-        and batch_meta.get("model") == model
-    ):
-        batch_id = batch_id_path.read_text(encoding="utf-8").strip()
-        print(f"pageindex: reusing submitted Anthropic Message Batch {batch_id}")
-        return batch_id
-    _write_json_file(batch_dir / "batch_requests.json", requests, indent=2)
-    client = Anthropic(api_key=api_key)
-    batch = client.messages.batches.create(requests=requests)
-    batch_id = str(batch.id)
-    (batch_dir / "batch_id.txt").write_text(batch_id + "\n", encoding="utf-8")
-    (batch_dir / "batch_submitted.json").write_text(
-        batch.model_dump_json(indent=2),
-        encoding="utf-8",
-    )
-    _write_json_file(
-        batch_meta_path,
-        {
-            "request_hash": request_hash,
-            "model": model,
-            "request_count": len(requests),
-            "batch_id": batch_id,
-        },
-        indent=2,
-    )
-    return batch_id
 
 
 def build_pageindex(
@@ -333,100 +308,81 @@ def build_pageindex(
     rebuild: bool = False,
     show_progress: bool = False,
 ) -> Path:
+    del show_progress
+    if anthropic_batch:
+        raise RuntimeError(
+            "The vector_pageindex_rag_eval PageIndex implementation does not use "
+            "Anthropic Message Batches. Build without --anthropic-batch."
+        )
     records = load_manifest(artifact_dir)
     revision = _artifact_revision(artifact_dir)
     index_dir = artifact_dir / "indexes" / "pageindex"
-    index_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir = index_dir / "cache"
     path = index_dir / "index.json"
+    cfg = _pageindex_config(cache_dir=cache_dir, force_reindex=rebuild or not resume)
     expected_meta = {
         "method": "pageindex",
         "artifact_revision": revision,
+        "logic": "vector_pageindex_rag_eval.PageIndexRAG",
+        "build_with_llm": bool(cfg.get("build_with_llm", True)),
     }
-    if anthropic_batch:
-        batch_id = submit_pageindex_batch(
-            artifact_dir,
-            model=model or batch_model(),
-            resume=resume,
-        )
-        print(
-            "Submitted Anthropic Message Batch for PageIndex summaries. "
-            f"Batch id: {batch_id}. Re-run without --anthropic-batch after results are materialized."
-        )
-    if not rebuild and _index_is_current(index_dir, expected=expected_meta):
+    if resume and not rebuild and _index_is_current(index_dir, expected=expected_meta):
         print("pageindex: index fresh, skipping (use --rebuild-indexes to force)")
         return path
 
-    parts_dir = index_dir / "parts"
-    documents: list[dict[str, Any]] = []
-    progress = ProgressBar("PageIndex", len(records), enabled=show_progress)
-    try:
-        for record in records:
-            part = _load_pageindex_part(parts_dir, record) if resume else None
-            detail = f"resume {record.filename}"
-            if part is None:
-                part = _build_pageindex_part(artifact_dir, record)
-                _write_json_file(_part_path(parts_dir, record.document_id), part, indent=2)
-                detail = f"built {record.filename}"
-            document = part.get("document")
-            if isinstance(document, dict):
-                documents.append(document)
-            progress.advance(detail=detail)
-    except Exception:
-        progress.fail()
-        raise
-    progress.close()
-
-    _write_json_file(path, {"documents": documents}, indent=2)
+    llm = make_pageindex_llm({"model": model} if model else {}) if cfg.get("build_with_llm", True) else None
+    pageindex = PageIndexRAG(cfg, llm, cache_dir=cache_dir)
+    pageindex.build(_documents(artifact_dir, records))
+    _write_json_file(index_dir / "config.json", {**cfg, "force_reindex": False}, indent=2)
+    _write_json_file(
+        path,
+        {
+            "method": "pageindex",
+            "logic": "vector_pageindex_rag_eval.PageIndexRAG",
+            "artifact_revision": revision,
+            "document_count": len(records),
+            "setup_usage": pageindex.setup_usage.to_dict(),
+            "documents": _document_payload(records),
+        },
+        indent=2,
+    )
     _write_index_meta(
         index_dir,
         {
             **expected_meta,
-            "document_count": len(documents),
+            "document_count": len(records),
+            "setup_usage": pageindex.setup_usage.to_dict(),
         },
     )
     return path
 
 
-def _build_pageindex_part(artifact_dir: Path, record: Any) -> dict[str, Any]:
-    text = document_text(artifact_dir, record)
-    pages = []
-    for page in record.pages:
-        page_text = text[page.start_char : page.end_char]
-        pages.append(
-            {
-                "page": page.page,
-                "start_char": page.start_char,
-                "end_char": page.end_char,
-                "title": f"{record.title} / page {page.page}",
-                "summary": _page_summary(page_text),
-            }
+def load_pageindex_hits(artifact_dir: Path, query: str, *, top_k: int = 8) -> list[SearchHit]:
+    index_dir = artifact_dir / "indexes" / "pageindex"
+    path = index_dir / "index.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Missing PageIndex index: {path}")
+    cfg = _read_json_file(index_dir / "config.json")
+    if not isinstance(cfg, dict):
+        raise FileNotFoundError(f"Missing PageIndex index config: {index_dir / 'config.json'}")
+    cfg["force_reindex"] = False
+    cfg["selected_nodes"] = max(int(cfg.get("selected_nodes", 1)), top_k)
+    llm = make_pageindex_llm({})
+    pageindex = PageIndexRAG(cfg, llm, cache_dir=index_dir / "cache")
+    pageindex.build(_documents(artifact_dir))
+    output = pageindex.query(query)
+    return [
+        SearchHit(
+            document_id=span.document_id,
+            start_char=span.start_char,
+            end_char=span.end_char,
+            text=span.text,
+            score=span.score,
+            source="pageindex",
+            section=str(span.metadata.get("node_title", "")),
         )
-    return {
-        "method": "pageindex",
-        "document_id": record.document_id,
-        "text_sha256": record.text_sha256,
-        "document": {
-            "document_id": record.document_id,
-            "title": record.title,
-            "category": record.category,
-            "summary": _page_summary(text, max_chars=1200),
-            "pages": pages,
-        },
-    }
-
-
-def _load_pageindex_part(parts_dir: Path, record: Any) -> dict[str, Any] | None:
-    payload = _read_json_file(_part_path(parts_dir, record.document_id))
-    if not isinstance(payload, dict):
-        return None
-    expected = {
-        "method": "pageindex",
-        "document_id": record.document_id,
-        "text_sha256": record.text_sha256,
-    }
-    if not all(payload.get(key) == value for key, value in expected.items()):
-        return None
-    return payload if isinstance(payload.get("document"), dict) else None
+        for span in output.spans[:top_k]
+    ]
 
 
 def build_graphrag_prerequisites(artifact_dir: Path, *, show_progress: bool = False) -> Path:
@@ -442,7 +398,7 @@ def build_graphrag_prerequisites(artifact_dir: Path, *, show_progress: bool = Fa
             target = corpus_dir / Path(record.text_path).name
             text = source.read_text(encoding="utf-8")
             target.write_text(text, encoding="utf-8")
-            corpus[f"grid/{target.name}"] = text
+            corpus[record.document_id] = text
             progress.advance(detail=record.filename)
     except Exception:
         progress.fail()
@@ -538,78 +494,57 @@ def build_graphrag_index(artifact_dir: Path, *, rebuild: bool = False, show_prog
     )
 
 
-@dataclass(frozen=True)
-class SearchHit:
-    document_id: str
-    start_char: int
-    end_char: int
-    text: str
-    score: float
-    source: str
-    section: str = ""
-
-
-def _dense_cosine(left: list[float], right: list[float]) -> float:
-    numerator = sum(a * b for a, b in zip(left, right))
-    left_norm = math.sqrt(sum(a * a for a in left)) or 1.0
-    right_norm = math.sqrt(sum(b * b for b in right)) or 1.0
-    return numerator / (left_norm * right_norm)
-
-
-def load_vector_hits(artifact_dir: Path, query: str, *, top_k: int = 8) -> list[SearchHit]:
-    path = artifact_dir / "indexes" / "vector" / "index.json"
-    if not path.exists():
-        raise FileNotFoundError(f"Missing vector index: {path}")
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    provider = payload.get("provider", "local")
-    query_vector = _term_vector(query) if provider == "local" else {}
-    query_embedding = (
-        _voyage_embeddings([query], input_type="query")[0] if provider == "voyage" else []
+def load_graphrag_hits(artifact_dir: Path, query: str, *, top_k: int = 8) -> list[SearchHit]:
+    index_root = artifact_dir / "graphrag_data" / "graph_index"
+    corpus_path = index_root / "corpus.json"
+    graph_dir = index_root / GRAPHRAG_METHOD
+    if not corpus_path.exists():
+        raise FileNotFoundError(f"Missing GraphRAG corpus: {corpus_path}")
+    corpus: dict[str, str] = json.loads(corpus_path.read_text(encoding="utf-8"))
+    hash_value = corpus_hash(corpus)
+    if not index_is_fresh(graph_dir, corpus_hash=hash_value):
+        raise FileNotFoundError(
+            f"GraphRAG index missing or stale for {GRAPHRAG_METHOD}: {graph_dir}"
+        )
+    request = query_request(
+        query=query,
+        graph_dir=str(graph_dir),
+        top_k=top_k,
+        config={"corpus_hash": hash_value},
     )
-    hits = []
-    for chunk in payload.get("chunks", []):
-        if provider == "voyage":
-            score = _dense_cosine(query_embedding, list(chunk.get("embedding") or []))
-        else:
-            score = _cosine(query_vector, dict(chunk.get("vector") or {}))
-        if score > 0:
-            hits.append(
-                SearchHit(
-                    document_id=chunk["document_id"],
-                    start_char=int(chunk["start_char"]),
-                    end_char=int(chunk["end_char"]),
-                    text=str(chunk.get("text") or ""),
-                    score=score,
-                    source="vector",
-                )
-            )
-    return sorted(hits, key=lambda hit: hit.score, reverse=True)[:top_k]
-
-
-def load_pageindex_hits(artifact_dir: Path, query: str, *, top_k: int = 8) -> list[SearchHit]:
-    path = artifact_dir / "indexes" / "pageindex" / "index.json"
-    if not path.exists():
-        raise FileNotFoundError(f"Missing PageIndex index: {path}")
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    query_vector = _term_vector(query)
-    hits = []
-    for doc in payload.get("documents", []):
-        for page in doc.get("pages", []):
-            haystack = " ".join([doc.get("title", ""), doc.get("category", ""), page.get("title", ""), page.get("summary", "")])
-            score = _cosine(query_vector, _term_vector(haystack))
-            if score > 0:
-                hits.append(
-                    SearchHit(
-                        document_id=doc["document_id"],
-                        start_char=int(page["start_char"]),
-                        end_char=int(page["end_char"]),
-                        text=str(page.get("summary") or ""),
-                        score=score,
-                        source="pageindex",
-                        section=str(page.get("title") or ""),
-                    )
-                )
-    return sorted(hits, key=lambda hit: hit.score, reverse=True)[:top_k]
+    process = subprocess.run(
+        [sys.executable, "-m", "grid_agent_core.graphrag.graphrag_ms_worker"],
+        input=json.dumps(request),
+        capture_output=True,
+        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        text=True,
+        timeout=int(os.getenv("GRID_GRAPHRAG_QUERY_TIMEOUT_SECONDS", "180")),
+    )
+    if process.returncode != 0:
+        raise RuntimeError(
+            "Local GraphRAG worker exited "
+            f"{process.returncode}: {process.stderr[-800:] or process.stdout[-800:]}"
+        )
+    response = parse_worker_stdout(process.stdout)
+    if response is None:
+        raise RuntimeError("Local GraphRAG worker returned no parseable JSON response.")
+    if not response.ok:
+        raise RuntimeError(f"Local GraphRAG worker error: {response.error}")
+    spans, dropped = resolve_spans(response.contexts, corpus)
+    scores = _graphrag_context_scores(response.contexts)
+    hits = [
+        SearchHit(
+            document_id=span.document_id,
+            start_char=span.start_char,
+            end_char=span.end_char,
+            text=span.snippet,
+            score=scores.get((span.document_id, span.snippet), 0.0),
+            source="graphrag",
+            section=f"GraphRAG text unit; dropped={dropped}",
+        )
+        for span in spans
+    ]
+    return hits[:top_k]
 
 
 def build_all(
@@ -621,6 +556,8 @@ def build_all(
     rebuild_indexes: bool = False,
     rebuild_graphrag: bool = False,
     vector_provider: str = "voyage",
+    vector_chunk_strategy: str = "semantic",
+    vector_search_strategy: str = "hybrid",
     show_progress: bool = False,
 ) -> None:
     start = time.time()
@@ -634,16 +571,21 @@ def build_all(
         ) from exc
     selected = set(methods)
     if "vector" in selected:
-        print(f"Building vector index for {len(records)} documents...")
+        print(
+            "Building vector_pageindex_rag_eval VectorRAG index "
+            f"for {len(records)} documents..."
+        )
         build_vector_index(
             artifact_dir,
             provider=vector_provider,
+            chunk_strategy=vector_chunk_strategy,
+            search_strategy=vector_search_strategy,
             resume=resume,
             rebuild=rebuild_indexes,
             show_progress=show_progress,
         )
     if "pageindex" in selected:
-        print("Building PageIndex index...")
+        print("Building vector_pageindex_rag_eval PageIndexRAG index...")
         build_pageindex(
             artifact_dir,
             anthropic_batch=anthropic_batch,
@@ -652,13 +594,55 @@ def build_all(
             show_progress=show_progress,
         )
     if "graphrag" in selected:
-        print("Building GraphRAG index with local GridAgentCore graphrag_ms worker...")
+        print("Building rlm-eval GraphRAG index with local graphrag_ms worker...")
         build_graphrag_index(
             artifact_dir,
             rebuild=rebuild_graphrag,
             show_progress=show_progress,
         )
     print(f"Grid index build finished in {time.time() - start:.1f}s")
+
+
+def _query_vector_config(cfg: dict[str, Any], *, top_k: int) -> dict[str, Any]:
+    cfg = dict(cfg)
+    cfg["force_reindex"] = False
+    cfg["top_k"] = max(int(cfg.get("top_k", 1)), top_k)
+    reranker = dict(cfg.get("reranker") or {})
+    if reranker.get("enabled", True):
+        reranker["top_k"] = max(int(reranker.get("top_k", 1)), top_k)
+        cfg["reranker"] = reranker
+    return cfg
+
+
+def _normalize_vector_provider(provider: str) -> str:
+    normalized = provider.strip().lower().replace("-", "_")
+    if normalized in {"voyage", "voyageai"}:
+        return "voyage"
+    if normalized in {"sentence_transformers", "sentence_transformer", "st", "bge"}:
+        return "sentence_transformers"
+    raise ValueError("vector provider must be 'voyage' or 'sentence_transformers'.")
+
+
+def _optional_int(value: str | None) -> int | None:
+    if value is None or not str(value).strip():
+        return None
+    return int(value)
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _graphrag_context_scores(contexts: list[dict[str, Any]]) -> dict[tuple[str, str], float]:
+    return {
+        (str(context.get("document_id", "")), str(context.get("text", "") or "")): float(
+            context.get("score", 0.0) or 0.0
+        )
+        for context in contexts
+    }
 
 
 def main() -> None:
@@ -670,9 +654,25 @@ def main() -> None:
     parser.add_argument("--anthropic-batch", action="store_true")
     parser.add_argument("--rebuild-indexes", action="store_true")
     parser.add_argument("--rebuild-graphrag", action="store_true")
-    parser.add_argument("--no-resume", action="store_true", help="Rebuild per-document index parts.")
+    parser.add_argument("--no-resume", action="store_true", help="Ignore VectorRAG/PageIndex cache files.")
     parser.add_argument("--no-progress", action="store_true", help="Disable progress bars.")
-    parser.add_argument("--vector-provider", choices=["voyage", "local"], default="voyage")
+    parser.add_argument(
+        "--vector-provider",
+        choices=["voyage", "sentence_transformers"],
+        default="voyage",
+    )
+    parser.add_argument(
+        "--chunk-strategy",
+        choices=["semantic", "hierarchical", "recursive", "fixed"],
+        default="semantic",
+        help="VectorRAG chunking strategy from vector_pageindex_rag_eval.",
+    )
+    parser.add_argument(
+        "--search-strategy",
+        choices=["hybrid", "vector"],
+        default="hybrid",
+        help="VectorRAG search strategy from vector_pageindex_rag_eval.",
+    )
     args = parser.parse_args()
     if args.source_dir is not None:
         print("Ignoring --source-dir during indexing; run grid-parse-documents first.")
@@ -703,6 +703,8 @@ def main() -> None:
         rebuild_indexes=rebuild_indexes,
         rebuild_graphrag=args.rebuild_graphrag,
         vector_provider=args.vector_provider,
+        vector_chunk_strategy=args.chunk_strategy,
+        vector_search_strategy=args.search_strategy,
         show_progress=not args.no_progress,
     )
 
