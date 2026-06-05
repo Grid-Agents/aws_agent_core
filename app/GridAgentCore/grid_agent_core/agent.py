@@ -32,6 +32,11 @@ MAX_VISIBLE_SPAN_CHARS = 4200
 MAX_TOOL_IMAGES = 4
 MAX_TOOL_IMAGE_BYTES = 4_000_000
 SDK_FILE_TOOLS = ["Read", "Glob", "Grep"]
+# Tool results can carry base64 figure image blocks. The Claude Agent SDK stdio
+# transport rejects any single JSON message larger than this (SDK default 1 MiB),
+# which figure-bearing tool results exceed. Raise it past the worst case
+# (MAX_TOOL_IMAGES * MAX_TOOL_IMAGE_BYTES, base64-inflated ~4/3) plus headroom.
+SDK_MAX_BUFFER_BYTES = int(os.getenv("GRID_SDK_MAX_BUFFER_BYTES", str(32 * 1024 * 1024)))
 
 
 def resolve_claude_cli_path() -> str | None:
@@ -398,6 +403,7 @@ class GridAgentSession:
             ),
             max_turns=MAX_AGENT_TURNS,
             max_budget_usd=MAX_AGENT_BUDGET_USD,
+            max_buffer_size=SDK_MAX_BUFFER_BYTES,
             model=model_id(),
             agents=agents,
             setting_sources=[],
