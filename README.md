@@ -543,6 +543,28 @@ Open `http://127.0.0.1:5173`.
 
 The UI posts the same payload, streams NDJSON events from `/api/grid/run`, and displays the answer, citations, root-agent turns, retrieval calls, subagent threads, latency, and errors. When cited evidence has attached figures, the source snippet card shows figure IDs and S3/local artifact links.
 
+## Test Console (single page, no build)
+
+`grid-local-api` also serves a self-contained test console — a single static page at `app/GridAgentCore/test_ui/index.html`. No `npm` build is required: just start the API and open the page.
+
+```bash
+cd app/GridAgentCore
+set -a
+source ../../.env
+set +a
+uv run grid-local-api --port 8000
+```
+
+Open **`http://127.0.0.1:8000/ui/`** (the root `/` also redirects there).
+
+It streams the same NDJSON events as the React UI, plus:
+
+- **Live / Retrieval Map / Answer / Trajectory** tabs.
+- **Run history** — every completed run is auto-saved to S3 under `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/runs/` (full record at `runs/<id>.json`, summary list at `runs/index.json`, capped at 200) and is reloadable from the **Saved runs** dropdown. Because it is S3-backed, history is durable and shared across machines.
+- **View by method** — split the Retrieval Map by retrieval method: see all methods at once, or isolate one of `vector` / `pageindex` / `find`.
+
+`graphrag` is auto-disabled in the method picker unless its index is present. Cited figure crops are served over HTTP from `/artifacts/`.
+
 ## How The Agent Works Internally
 
 1. `main.py` receives a JSON payload from AgentCore Runtime.

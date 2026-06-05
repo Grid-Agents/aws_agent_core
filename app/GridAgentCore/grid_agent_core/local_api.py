@@ -3,20 +3,25 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import time
 import uuid
 from collections.abc import Iterable
 from typing import Any
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .agent import run_grid_agent_events
 from .artifacts import artifact_revision, configured_s3_uri, ensure_artifacts, runtime_artifact_dir
 from .corpus import load_manifest
-from .settings import RETRIEVAL_METHODS, model_id
+from .settings import RETRIEVAL_METHODS, model_id, s3_bucket, s3_prefix
 
 
 load_dotenv()
@@ -106,6 +111,24 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/")
+async def root() -> RedirectResponse:
+    return RedirectResponse(url="/ui/")
+
+
+# Serve cited figure crops (and other artifacts) over HTTP for the test console.
+# Evidence figure metadata carries a relative `image_path` like
+# `figures/grid/<doc>/page-000N-figure-KK.jpg`, so /artifacts/<image_path> resolves it.
+_artifact_root = runtime_artifact_dir()
+_artifact_root.mkdir(parents=True, exist_ok=True)
+app.mount("/artifacts", StaticFiles(directory=str(_artifact_root)), name="artifacts")
+
+# Serve the simple local test console (single static page).
+_test_ui_dir = Path(__file__).resolve().parents[1] / "test_ui"
+if _test_ui_dir.is_dir():
+    app.mount("/ui", StaticFiles(directory=str(_test_ui_dir), html=True), name="ui")
+
+
 @app.get("/api/overview")
 async def overview() -> dict[str, Any]:
     try:
@@ -138,6 +161,129 @@ async def overview() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=f"Grid artifacts are not ready: {exc}") from exc
 
 
+# ---- run history persisted to S3 (durable + shared across machines) ----
+def _s3_client():
+    import boto3
+
+    return boto3.client("s3", region_name=os.getenv("AWS_REGION"))
+
+
+def _runs_base() -> str:
+    prefix = s3_prefix().strip("/")
+    return f"{prefix}/runs" if prefix else "runs"
+
+
+def _safe_run_id(run_id: str) -> str:
+    return re.sub(r"[^0-9A-Za-z_-]", "", str(run_id))[:48]
+
+
+def _trim_run_result(result: dict[str, Any]) -> dict[str, Any]:
+    trimmed = json.loads(json.dumps(result))
+    for key in ("evidence", "citations"):
+        for item in trimmed.get(key) or []:
+            span = item.get("span_text")
+            if isinstance(span, str) and len(span) > 700:
+                item["span_text"] = span[:700]
+    for event in trimmed.get("trajectory") or []:
+        detail = event.get("detail")
+        if isinstance(detail, str) and len(detail) > 1300:
+            event["detail"] = detail[:1300]
+    return trimmed
+
+
+def _run_summary(record: dict[str, Any]) -> dict[str, Any]:
+    keys = ("id", "ts", "prompt", "methods", "subagents", "filetools", "status", "cited", "retrieved")
+    return {key: record.get(key) for key in keys}
+
+
+def _read_runs_index(client, bucket: str) -> list[dict[str, Any]]:
+    try:
+        obj = client.get_object(Bucket=bucket, Key=f"{_runs_base()}/index.json")
+        data = json.loads(obj["Body"].read())
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def save_run_to_s3(payload: dict[str, Any], result: dict[str, Any]) -> str | None:
+    bucket = s3_bucket()
+    if not bucket:
+        return None
+    client = _s3_client()
+    run_id = str(int(time.time() * 1000))
+    record = {
+        "id": run_id,
+        "ts": int(time.time() * 1000),
+        "prompt": payload.get("prompt"),
+        "methods": payload.get("methods"),
+        "subagents": bool(payload.get("enable_subagents")),
+        "filetools": bool(payload.get("allow_sdk_file_tools")),
+        "status": result.get("status"),
+        "cited": len(result.get("citations") or []),
+        "retrieved": len(result.get("evidence") or []),
+        "result": _trim_run_result(result),
+    }
+    base = _runs_base()
+    client.put_object(
+        Bucket=bucket,
+        Key=f"{base}/{run_id}.json",
+        Body=json.dumps(record, ensure_ascii=False).encode("utf-8"),
+        ContentType="application/json",
+    )
+    index = _read_runs_index(client, bucket)
+    index.insert(0, _run_summary(record))
+    index = index[:200]
+    client.put_object(
+        Bucket=bucket,
+        Key=f"{base}/index.json",
+        Body=json.dumps(index, ensure_ascii=False).encode("utf-8"),
+        ContentType="application/json",
+    )
+    return run_id
+
+
+@app.get("/api/runs")
+async def list_runs() -> dict[str, Any]:
+    bucket = s3_bucket()
+    if not bucket:
+        return {"runs": [], "s3": False}
+    try:
+        return {
+            "runs": _read_runs_index(_s3_client(), bucket),
+            "s3": True,
+            "uri": f"{configured_s3_uri()}/runs",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Cannot list runs from S3: {exc}") from exc
+
+
+@app.get("/api/runs/{run_id}")
+async def get_run(run_id: str) -> dict[str, Any]:
+    bucket = s3_bucket()
+    if not bucket:
+        raise HTTPException(status_code=404, detail="No S3 bucket configured.")
+    try:
+        obj = _s3_client().get_object(Bucket=bucket, Key=f"{_runs_base()}/{_safe_run_id(run_id)}.json")
+        return json.loads(obj["Body"].read())
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Run not found: {exc}") from exc
+
+
+@app.delete("/api/runs")
+async def clear_runs() -> dict[str, Any]:
+    bucket = s3_bucket()
+    if not bucket:
+        return {"deleted": 0}
+    client = _s3_client()
+    deleted = 0
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=f"{_runs_base()}/"):
+        for item in page.get("Contents", []):
+            client.delete_object(Bucket=bucket, Key=item["Key"])
+            deleted += 1
+    return {"deleted": deleted}
+
+
 @app.post("/api/grid/run")
 async def run_grid(request: GridRunRequest) -> StreamingResponse:
     payload = request.model_dump()
@@ -151,6 +297,11 @@ async def run_grid(request: GridRunRequest) -> StreamingResponse:
             else:
                 payload.pop("runtime_session_id", None)
                 async for event in run_grid_agent_events(payload):
+                    if event.get("type") == "result":
+                        try:
+                            save_run_to_s3(payload, event)
+                        except Exception as exc:  # never break the stream on a save failure
+                            print(f"[runs] failed to save run to S3: {exc}")
                     yield json.dumps(event, ensure_ascii=False) + "\n"
         except Exception as exc:
             yield json.dumps(
