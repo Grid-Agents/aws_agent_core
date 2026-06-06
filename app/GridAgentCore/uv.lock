@@ -1685,26 +1685,29 @@ name = "grid-agent-core"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "anthropic" },
     { name = "bedrock-agentcore" },
     { name = "boto3" },
     { name = "claude-agent-sdk" },
-    { name = "fastapi" },
-    { name = "llama-cloud" },
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pandas" },
-    { name = "pyarrow" },
-    { name = "pymupdf" },
-    { name = "pypdf" },
-    { name = "pysbd" },
     { name = "python-dotenv" },
     { name = "tqdm" },
-    { name = "uvicorn", extra = ["standard"] },
     { name = "voyageai" },
 ]
 
 [package.optional-dependencies]
+build = [
+    { name = "anthropic" },
+    { name = "fastapi" },
+    { name = "llama-cloud" },
+    { name = "pandas" },
+    { name = "pillow" },
+    { name = "pyarrow" },
+    { name = "pymupdf" },
+    { name = "pypdf" },
+    { name = "pysbd" },
+    { name = "uvicorn", extra = ["standard"] },
+]
 dev = [
     { name = "httpx" },
     { name = "pytest" },
@@ -1716,27 +1719,28 @@ graphrag = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = ">=0.64.0,<1" },
+    { name = "anthropic", marker = "extra == 'build'", specifier = ">=0.64.0,<1" },
     { name = "bedrock-agentcore", specifier = ">=1.12.0,<2" },
     { name = "boto3", specifier = ">=1.34,<2" },
     { name = "claude-agent-sdk", specifier = ">=0.2.87,<0.3" },
-    { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "fastapi", marker = "extra == 'build'", specifier = ">=0.115,<1" },
     { name = "graphrag", marker = "extra == 'graphrag'", specifier = ">=2.7,<4" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27,<1" },
-    { name = "llama-cloud", specifier = ">=1.4.1,<2" },
+    { name = "llama-cloud", marker = "extra == 'build'", specifier = ">=1.4.1,<2" },
     { name = "numpy", specifier = ">=1.26,<3" },
-    { name = "pandas", specifier = ">=2.2,<3" },
-    { name = "pyarrow", specifier = ">=16,<23" },
-    { name = "pymupdf", specifier = ">=1.24,<2" },
-    { name = "pypdf", specifier = ">=4,<7" },
-    { name = "pysbd", specifier = ">=0.3.4,<0.4" },
+    { name = "pandas", marker = "extra == 'build'", specifier = ">=2.2,<3" },
+    { name = "pillow", marker = "extra == 'build'", specifier = ">=10,<13" },
+    { name = "pyarrow", marker = "extra == 'build'", specifier = ">=16,<23" },
+    { name = "pymupdf", marker = "extra == 'build'", specifier = ">=1.24,<2" },
+    { name = "pypdf", marker = "extra == 'build'", specifier = ">=4,<7" },
+    { name = "pysbd", marker = "extra == 'build'", specifier = ">=0.3.4,<0.4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0,<9" },
     { name = "python-dotenv", specifier = ">=1.0.1,<2" },
     { name = "tqdm", specifier = ">=4.66,<5" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34,<1" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'build'", specifier = ">=0.34,<1" },
     { name = "voyageai", specifier = ">=0.3.7,<1" },
 ]
-provides-extras = ["dev", "graphrag"]
+provides-extras = ["build", "dev", "graphrag"]
 
 [[package]]
 name = "h11"

@@ -15,8 +15,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 AGENTCORE_JSON = REPO_ROOT / "agentcore" / "agentcore.json"
 AWS_TARGETS_JSON = REPO_ROOT / "agentcore" / "aws-targets.json"
 DEPLOYED_STATE_JSON = REPO_ROOT / "agentcore" / ".cli" / "deployed-state.json"
+CDK_OUT_DIR = REPO_ROOT / "agentcore" / "cdk" / "cdk.out"
 RUNTIME_ARTIFACT_DIR = "/tmp/grid-agent-core/artifacts"
 DEFAULT_VOYAGE_SECRET_NAME = "grid-agent-core/voyage-api-key"
+AWS_HELPER_TIMEOUT_SECONDS = 120
+ASSET_UPLOAD_TIMEOUT_SECONDS = 7200
+AGENTCORE_DEPLOY_TIMEOUT_SECONDS = 3600
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -38,6 +42,10 @@ def load_env(path: Path) -> dict[str, str]:
             value = value[1:-1]
         env[key] = value
     env.setdefault("AWS_DEFAULT_REGION", env.get("AWS_REGION", ""))
+    env["AWS_PAGER"] = ""
+    env.setdefault("AWS_MAX_ATTEMPTS", "10")
+    env.setdefault("AWS_RETRY_MODE", "adaptive")
+    env.setdefault("CDK_DISABLE_VERSION_CHECK", "1")
     return env
 
 
@@ -58,10 +66,14 @@ def run(
     cwd: Path = REPO_ROOT,
     check: bool = True,
     quiet: bool = False,
+    timeout: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
     if not quiet:
         print(f"$ {format_cmd(cmd)}")
-    return subprocess.run(cmd, cwd=cwd, env=env, text=True, check=check)
+    try:
+        return subprocess.run(cmd, cwd=cwd, env=env, text=True, check=check, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise SystemExit(f"Command timed out after {exc.timeout}s: {format_cmd(cmd)}") from exc
 
 
 def ensure_artifact_files() -> None:
@@ -101,6 +113,7 @@ def ensure_voyage_secret(env: dict[str, str], secret_name: str) -> None:
         text=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        timeout=AWS_HELPER_TIMEOUT_SECONDS,
     )
 
     temp_path = ""
@@ -124,6 +137,7 @@ def ensure_voyage_secret(env: dict[str, str], secret_name: str) -> None:
                     env["AWS_REGION"],
                 ],
                 env=env,
+                timeout=AWS_HELPER_TIMEOUT_SECONDS,
             )
         else:
             run(
@@ -139,6 +153,7 @@ def ensure_voyage_secret(env: dict[str, str], secret_name: str) -> None:
                     env["AWS_REGION"],
                 ],
                 env=env,
+                timeout=AWS_HELPER_TIMEOUT_SECONDS,
             )
     finally:
         if temp_path:
@@ -182,18 +197,145 @@ def verify_s3_artifacts(env: dict[str, str]) -> None:
         "indexes/pageindex/config.json",
     ]
     for rel in required:
-        run(["aws", "s3", "ls", f"{base}/{rel}"], env=env)
+        run(["aws", "s3", "ls", f"{base}/{rel}"], env=env, timeout=AWS_HELPER_TIMEOUT_SECONDS)
 
 
-def deploy(env: dict[str, str], *, dry_run_only: bool) -> None:
+def abort_incomplete_uploads(
+    env: dict[str, str],
+    *,
+    bucket: str,
+    key: str,
+    region: str,
+) -> None:
+    result = subprocess.run(
+        [
+            "aws",
+            "s3api",
+            "list-multipart-uploads",
+            "--bucket",
+            bucket,
+            "--prefix",
+            key,
+            "--region",
+            region,
+            "--query",
+            "Uploads[].UploadId",
+            "--output",
+            "text",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=AWS_HELPER_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        return
+    for upload_id in result.stdout.split():
+        if upload_id == "None":
+            continue
+        print(f"Aborting incomplete upload for s3://{bucket}/{key}")
+        run(
+            [
+                "aws",
+                "s3api",
+                "abort-multipart-upload",
+                "--bucket",
+                bucket,
+                "--key",
+                key,
+                "--upload-id",
+                upload_id,
+                "--region",
+                region,
+            ],
+            env=env,
+            timeout=AWS_HELPER_TIMEOUT_SECONDS,
+        )
+
+
+def prepublish_cdk_assets(env: dict[str, str], target: str) -> None:
+    assets_path = CDK_OUT_DIR / f"AgentCore-GridAgentCore-{target}.assets.json"
+    if not assets_path.exists():
+        raise SystemExit(f"Missing synthesized CDK assets manifest: {assets_path}")
+
+    assets = json.loads(assets_path.read_text(encoding="utf-8"))
+    upload_env = env.copy()
+    upload_config = REPO_ROOT / "agentcore" / ".cache" / "aws-cli-upload-config"
+    upload_config.parent.mkdir(parents=True, exist_ok=True)
+    upload_config.write_text(
+        "[default]\n"
+        "s3 =\n"
+        "    max_concurrent_requests = 4\n"
+        "    multipart_threshold = 8MB\n"
+        "    multipart_chunksize = 8MB\n",
+        encoding="utf-8",
+    )
+    upload_env["AWS_CONFIG_FILE"] = str(upload_config)
+
+    for item in assets.get("files", {}).values():
+        source = item.get("source", {})
+        source_path = CDK_OUT_DIR / source.get("path", "")
+        if source.get("packaging") != "file" or not source_path.exists():
+            raise SystemExit(f"Invalid CDK file asset source: {source_path}")
+
+        for destination in item.get("destinations", {}).values():
+            bucket = destination["bucketName"]
+            key = destination["objectKey"]
+            head = subprocess.run(
+                [
+                    "aws",
+                    "s3api",
+                    "head-object",
+                    "--bucket",
+                    bucket,
+                    "--key",
+                    key,
+                    "--region",
+                    destination["region"],
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=AWS_HELPER_TIMEOUT_SECONDS,
+            )
+            if head.returncode == 0:
+                print(f"CDK asset already present: s3://{bucket}/{key}")
+                continue
+
+            abort_incomplete_uploads(env, bucket=bucket, key=key, region=destination["region"])
+            run(
+                [
+                    "aws",
+                    "--cli-read-timeout",
+                    "0",
+                    "--cli-connect-timeout",
+                    "60",
+                    "s3",
+                    "cp",
+                    str(source_path),
+                    f"s3://{bucket}/{key}",
+                    "--region",
+                    destination["region"],
+                ],
+                env=upload_env,
+                timeout=ASSET_UPLOAD_TIMEOUT_SECONDS,
+            )
+
+
+def deploy(env: dict[str, str], *, target: str, dry_run_only: bool) -> None:
     run(["python3", "-m", "json.tool", str(AGENTCORE_JSON)], env=env, quiet=True)
     run(["python3", "-m", "json.tool", str(AWS_TARGETS_JSON)], env=env, quiet=True)
     run(["agentcore", "validate"], env=env)
-    run(["agentcore", "deploy", "--dry-run"], env=env)
+    run(["agentcore", "deploy", "--dry-run"], env=env, timeout=AGENTCORE_DEPLOY_TIMEOUT_SECONDS)
     if dry_run_only:
         print("Dry run completed. Re-run without --dry-run-only to deploy.")
         return
-    run(["agentcore", "deploy", "-y"], env=env)
+    prepublish_cdk_assets(env, target)
+    run(["agentcore", "deploy", "-y"], env=env, timeout=AGENTCORE_DEPLOY_TIMEOUT_SECONDS)
     run(["agentcore", "status"], env=env)
 
 
@@ -249,6 +391,7 @@ def attach_s3_policy(env: dict[str, str], target: str) -> None:
                 f"file://{temp_path}",
             ],
             env=env,
+            timeout=AWS_HELPER_TIMEOUT_SECONDS,
         )
     finally:
         if temp_path:
@@ -299,7 +442,7 @@ def main() -> None:
     update_agentcore_json(env, args.voyage_secret_name)
     if not args.skip_s3_check:
         verify_s3_artifacts(env)
-    deploy(env, dry_run_only=args.dry_run_only)
+    deploy(env, target=args.target, dry_run_only=args.dry_run_only)
     if not args.dry_run_only:
         attach_s3_policy(env, args.target)
         print_frontend_instructions(args.target)

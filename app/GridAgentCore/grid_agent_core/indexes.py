@@ -15,10 +15,6 @@ from pathlib import Path
 from typing import Any
 
 from .corpus import document_text, load_manifest
-from .graphrag.canonical_chunks import build_canonical_chunks, write_canonical_chunks
-from .graphrag.index_meta import IndexMeta, index_is_fresh, write_index_meta
-from .graphrag.span_resolver import resolve_spans
-from .graphrag.worker_protocol import index_request, parse_worker_stdout, query_request
 from .progress import ProgressBar
 from .rag_compat.grid_llm import make_pageindex_llm
 from .rag_compat.official_pageindex import OfficialPageIndexRAG
@@ -403,6 +399,8 @@ def load_pageindex_hits(artifact_dir: Path, query: str, *, top_k: int = 8) -> li
 
 
 def build_graphrag_prerequisites(artifact_dir: Path, *, show_progress: bool = False) -> Path:
+    from .graphrag.canonical_chunks import build_canonical_chunks, write_canonical_chunks
+
     records = load_manifest(artifact_dir)
     data_dir = artifact_dir / "graphrag_data"
     corpus_dir = data_dir / "corpus" / "grid"
@@ -450,6 +448,9 @@ def _missing_graphrag_dependencies() -> list[str]:
 
 
 def build_graphrag_index(artifact_dir: Path, *, rebuild: bool = False, show_progress: bool = False) -> None:
+    from .graphrag.index_meta import IndexMeta, index_is_fresh, write_index_meta
+    from .graphrag.worker_protocol import index_request, parse_worker_stdout
+
     data_dir = build_graphrag_prerequisites(artifact_dir, show_progress=show_progress)
     missing = _missing_graphrag_dependencies()
     if missing:
@@ -512,6 +513,10 @@ def build_graphrag_index(artifact_dir: Path, *, rebuild: bool = False, show_prog
 
 
 def load_graphrag_hits(artifact_dir: Path, query: str, *, top_k: int = 8) -> list[SearchHit]:
+    from .graphrag.index_meta import index_is_fresh
+    from .graphrag.span_resolver import resolve_spans
+    from .graphrag.worker_protocol import parse_worker_stdout, query_request
+
     index_root = artifact_dir / "graphrag_data" / "graph_index"
     corpus_path = index_root / "corpus.json"
     graph_dir = index_root / GRAPHRAG_METHOD

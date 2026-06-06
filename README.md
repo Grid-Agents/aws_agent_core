@@ -16,7 +16,7 @@ set -a
 source ../../.env
 set +a
 
-uv sync --extra dev
+uv sync --extra build --extra dev
 
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \
@@ -98,7 +98,7 @@ cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
 cp .env.example .env
 
 cd app/GridAgentCore
-uv sync --extra dev
+uv sync --extra build --extra dev
 
 cd frontend
 npm install
@@ -282,7 +282,7 @@ set -a
 source ../../.env
 set +a
 
-uv sync --extra dev --extra graphrag
+uv sync --extra build --extra dev --extra graphrag
 
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \
@@ -294,7 +294,7 @@ GraphRAG is slower and more dependency-heavy than vector/PageIndex. It requires 
 ### One Command For All Indexes
 
 ```bash
-uv sync --extra dev --extra graphrag
+uv sync --extra build --extra dev --extra graphrag
 
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \

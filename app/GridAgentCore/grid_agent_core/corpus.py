@@ -10,24 +10,14 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
-from pypdf import PdfReader
-
-from .llama_parse_agentic import (
-    LlamaParseResult,
-    parse_pdf_agentic,
-    payload_matches_parsebench_agentic,
-)
 from .models import DocumentRecord, FigureRecord, PageRecord
-from .multimodal_enrichment import (
-    enrich_page_markdown_with_visuals,
-    multimodal_enrichment_enabled,
-    visual_artifacts_to_figures,
-)
-from .multimodal_enrichment import DEFAULT_VLM_CONCURRENCY
 from .progress import ProgressBar, log_event
 from .settings import DEFAULT_ARTIFACT_DIR, grid_docs_dir
+
+if TYPE_CHECKING:
+    from .llama_parse_agentic import LlamaParseResult
 
 _NON_ID = re.compile(r"[^a-z0-9]+")
 PARSER_PYPDF = "pypdf"
@@ -41,6 +31,7 @@ PARSER_ALIASES = {
 }
 LLAMAPARSE_AGENTIC_ARTIFACTS_VERSION = 4
 DEFAULT_DOCUMENT_CONCURRENCY = 4
+DEFAULT_VLM_CONCURRENCY = 4
 FULL_GRID_CODE_FILENAME = "00_The_Full_Grid_Code.pdf"
 DEFAULT_SMOKE_PAGE_RANGE = (1, 8)
 DEFAULT_SMOKE_ARTIFACT_DIR = DEFAULT_ARTIFACT_DIR.parent / ".grid_smoke_artifacts"
@@ -105,6 +96,8 @@ def _page_range_label(page_range: tuple[int, int] | None) -> str | None:
 
 
 def extract_pdf(path: Path) -> tuple[str, list[PageRecord]]:
+    from pypdf import PdfReader
+
     reader = PdfReader(str(path))
     page_texts: list[tuple[int, str]] = []
     for index, page in enumerate(reader.pages, start=1):
@@ -128,6 +121,8 @@ def extract_pdf_with_llamaparse_agentic(
     cancel_event: threading.Event | None = None,
     vlm_limiter: threading.Semaphore | None = None,
 ) -> tuple[str, list[PageRecord], list[FigureRecord], dict[str, object]]:
+    from .llama_parse_agentic import parse_pdf_agentic
+
     parsed = parse_pdf_agentic(
         path,
         show_progress=show_progress,
@@ -161,6 +156,11 @@ def _llamaparse_result_to_corpus(
     cancel_event: threading.Event | None = None,
     vlm_limiter: threading.Semaphore | None = None,
 ) -> tuple[str, list[PageRecord], list[FigureRecord], dict[str, object]]:
+    from .multimodal_enrichment import (
+        enrich_page_markdown_with_visuals,
+        visual_artifacts_to_figures,
+    )
+
     page_markdown = [(page.page, page.markdown) for page in parsed.pages]
     visual_artifacts = []
     if multimodal_enrich:
@@ -252,6 +252,8 @@ def _write_source_document_metadata(source_dir: Path, artifact_dir: Path, pdf_pa
 
 def _pdf_page_count(path: Path) -> int | None:
     try:
+        from pypdf import PdfReader
+
         return len(PdfReader(str(path)).pages)
     except Exception:
         return None
@@ -308,6 +310,8 @@ def build_corpus(
     source_dir = source_dir.expanduser().resolve()
     artifact_dir = artifact_dir.expanduser().resolve()
     parser_id = normalize_parser(parser)
+    from .multimodal_enrichment import multimodal_enrichment_enabled
+
     multimodal_enrich = multimodal_enrichment_enabled(multimodal_enrich)
     if llamaparse_page_range is not None and parser_id != PARSER_LLAMAPARSE_AGENTIC:
         raise ValueError("llamaparse_page_range requires parser='llamaparse-agentic'.")
@@ -676,6 +680,8 @@ def _record_artifacts_are_current(
     if not text_path.exists() or not raw_path.exists():
         return False
     if parser_id == PARSER_LLAMAPARSE_AGENTIC:
+        from .llama_parse_agentic import payload_matches_parsebench_agentic
+
         raw_parse_path = parse_dir / f"{document_id}.raw.json"
         if not raw_parse_path.exists():
             return False
@@ -919,6 +925,8 @@ def main() -> None:
     pdf_paths = None
     llamaparse_page_range = None
     if args.smoke_full_grid_code:
+        from .multimodal_enrichment import multimodal_enrichment_enabled
+
         full_grid_code_pdf = find_full_grid_code_pdf(args.source_dir)
         pdf_paths = [full_grid_code_pdf]
         llamaparse_page_range = args.smoke_page_range
