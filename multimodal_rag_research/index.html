@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Multimodal RAG Survey for Grid AgentCore</title>
+    <meta name="description" content="Source-backed survey of multimodal RAG methods for complex document retrieval, figure evidence, and visual page retrieval.">
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #14212b;
+        --muted: #5f6c78;
+        --line: #d7dee5;
+        --paper: #f7f8fa;
+        --panel: #ffffff;
+        --accent: #1f6f7a;
+        --accent-2: #9f7a39;
+        --accent-3: #b35d3f;
+        --soft: #eaf3f4;
+        --code: #edf1f4;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--paper);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.55;
+        overflow-x: hidden;
+      }
+
+      a {
+        color: #0f6572;
+        text-decoration: none;
+        border-bottom: 1px solid rgba(15, 101, 114, 0.35);
+      }
+
+      a:hover {
+        border-bottom-color: currentColor;
+      }
+
+      .wrap {
+        width: min(1180px, calc(100% - 40px));
+        margin: 0 auto;
+      }
+
+      header {
+        background: #fff;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        gap: 48px;
+        align-items: center;
+        min-height: 42vh;
+        padding: 54px 0 42px;
+      }
+
+      .hero > *,
+      .grid-2 > *,
+      .grid-3 > *,
+      .chart-row > * {
+        min-width: 0;
+      }
+
+      .eyebrow {
+        margin: 0 0 18px;
+        color: var(--accent);
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        max-width: 840px;
+        margin: 0;
+        font-size: clamp(2.55rem, 6vw, 5.2rem);
+        font-weight: 780;
+        overflow-wrap: break-word;
+      }
+
+      .subtitle {
+        max-width: 780px;
+        margin: 24px 0 0;
+        color: var(--muted);
+        font-size: clamp(1.05rem, 1.8vw, 1.3rem);
+      }
+
+      .meta {
+        display: grid;
+        gap: 14px;
+        max-width: 100%;
+        padding: 18px;
+        background: var(--soft);
+        border: 1px solid #cfe0e3;
+        border-radius: 8px;
+        font-size: 0.92rem;
+      }
+
+      .meta strong {
+        display: block;
+        color: var(--ink);
+      }
+
+      nav {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(247, 248, 250, 0.96);
+        border-bottom: 1px solid var(--line);
+        backdrop-filter: blur(8px);
+      }
+
+      nav .wrap {
+        display: flex;
+        gap: 22px;
+        overflow-x: auto;
+        padding: 13px 0;
+        white-space: nowrap;
+      }
+
+      nav a {
+        color: var(--muted);
+        border-bottom: 0;
+        font-size: 0.9rem;
+        font-weight: 650;
+      }
+
+      main {
+        padding: 42px 0 80px;
+      }
+
+      section {
+        margin: 0 0 58px;
+      }
+
+      h2 {
+        margin: 0 0 18px;
+        font-size: clamp(1.8rem, 3.2vw, 2.65rem);
+      }
+
+      h3 {
+        margin: 28px 0 12px;
+        font-size: 1.25rem;
+      }
+
+      p {
+        margin: 0 0 14px;
+      }
+
+      .lead {
+        max-width: 900px;
+        color: #33434f;
+        font-size: 1.1rem;
+      }
+
+      .grid-2,
+      .grid-3 {
+        display: grid;
+        gap: 18px;
+      }
+
+      .grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 22px;
+      }
+
+      .card h3 {
+        margin-top: 0;
+      }
+
+      .callout {
+        border-left: 5px solid var(--accent);
+        background: #fff;
+        padding: 22px 24px;
+        margin: 22px 0;
+      }
+
+      .callout.warning {
+        border-left-color: var(--accent-2);
+      }
+
+      .stat {
+        display: block;
+        color: var(--accent);
+        font-size: 2.05rem;
+        font-weight: 780;
+        line-height: 1;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        margin: 0 6px 6px 0;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: var(--code);
+        color: #41505c;
+        font-size: 0.78rem;
+        font-weight: 680;
+      }
+
+      .tag.accent {
+        background: var(--soft);
+        color: var(--accent);
+      }
+
+      .tag.warn {
+        background: #f6efe2;
+        color: #86621f;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      table {
+        width: 100%;
+        min-width: 860px;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 13px 14px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: #edf2f5;
+        color: #33434f;
+        font-size: 0.83rem;
+        text-transform: uppercase;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      td:first-child {
+        font-weight: 680;
+      }
+
+      .chart-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      figure {
+        margin: 0;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      figure img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-radius: 6px;
+      }
+
+      figcaption {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 18px;
+        background: #13242e;
+        color: #edf7f7;
+        border-radius: 8px;
+        line-height: 1.45;
+      }
+
+      code {
+        padding: 0.12em 0.35em;
+        background: var(--code);
+        border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.92em;
+      }
+
+      pre code {
+        padding: 0;
+        background: transparent;
+      }
+
+      .source-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        padding: 0;
+        list-style: none;
+      }
+
+      .source-list li {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .small {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .checklist {
+        padding-left: 1.1rem;
+      }
+
+      .checklist li {
+        margin-bottom: 8px;
+      }
+
+      footer {
+        padding: 28px 0;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        background: #fff;
+      }
+
+      @media (max-width: 860px) {
+        .hero,
+        .grid-2,
+        .grid-3,
+        .chart-row,
+        .source-list {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          min-height: auto;
+          padding-top: 46px;
+        }
+
+        h1 {
+          font-size: clamp(2rem, 9vw, 3rem);
+        }
+
+        .subtitle,
+        .meta,
+        .card,
+        .callout {
+          overflow-wrap: anywhere;
+        }
+
+        .wrap {
+          width: calc(100% - 28px);
+          max-width: 1180px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        h1 {
+          font-size: 2rem;
+          line-height: 1.16;
+        }
+
+        .subtitle {
+          font-size: 1rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap hero">
+        <div>
+          <p class="eyebrow">Research survey for Grid AgentCore</p>
+          <h1>Multimodal RAG for complex documents</h1>
+          <p class="subtitle">A source-backed comparison of current production patterns and cutting-edge visual retrieval methods, with a recommendation for adding visual page retrieval to the existing Grid document stack.</p>
+        </div>
+        <aside class="meta" aria-label="Report metadata">
+          <div><strong>Last researched</strong>June 5, 2026</div>
+          <div><strong>Primary question</strong>Should the current text-plus-figure RAG design add visual page retrieval?</div>
+          <div><strong>Short answer</strong>Yes. Add it as a fourth retrieval tool and keep the existing stack.</div>
+        </aside>
+      </div>
+    </header>
+
+    <nav aria-label="Report sections">
+      <div class="wrap">
+        <a href="#summary">Summary</a>
+        <a href="#standard">Industry Standard</a>
+        <a href="#metrics">Metrics</a>
+        <a href="#current-design">Current Design</a>
+        <a href="#visual-tool">Fourth Tool</a>
+        <a href="#roadmap">Roadmap</a>
+        <a href="#sources">Sources</a>
+      </div>
+    </nav>
+
+    <main class="wrap">
+      <section id="summary">
+        <h2>Summary</h2>
+        <p class="lead">The current Grid design is defensible and close to the production-standard approach for visually rich PDFs: parse complex documents into structured text, enrich figures with VLM descriptions, retrieve text with vector/reranker plus structural tools, then attach the original figure crop through provenance. The strongest recommendation is to add <code>visual_page_retrieval</code> as a fourth retrieval tool, not to replace vector retrieval, PageIndex, or GraphRAG.</p>
+
+        <div class="grid-3" aria-label="Key findings">
+          <article class="card">
+            <span class="stat">81.3</span>
+            <h3>ColPali ViDoRe V1 NDCG@5</h3>
+            <p>ColPali page-image retrieval beat Unstructured + VLM captioning + BGE-M3 at 67.0 average NDCG@5 on ViDoRe V1. <a href="#src-colpali">Source</a></p>
+          </article>
+          <article class="card">
+            <span class="stat">36.5 F1</span>
+            <h3>M3DocRAG top-4 M3DocVQA</h3>
+            <p>ColPali + Qwen2-VL reached 36.5 F1, compared with 23.7 F1 for a text RAG baseline on the same open-domain DocVQA benchmark. <a href="#src-m3docvqa">Source</a></p>
+          </article>
+          <article class="card">
+            <span class="stat">92.67</span>
+            <h3>Argus ViDoRe V1 NDCG@5</h3>
+            <p>Argus-Retriever is a June 2026 preprint and reports the highest open late-interaction combined-leaderboard result seen in this survey. <a href="#src-argus">Source</a></p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>Recommendation:</strong> add a page-image retriever that renders each PDF page, embeds page images with a late-interaction visual document model such as ColPali, ColQwen, Nemotron ColEmbed, or Argus-style retrievers, and returns page IDs plus image URIs. The agent should call it for questions about figures, charts, diagrams, layout, screenshots, or when text retrieval has low confidence or conflicting evidence.</p>
+        </div>
+      </section>
+
+      <section id="standard">
+        <h2>Industry Standard vs Cutting Edge</h2>
+        <div class="grid-2">
+          <article class="card">
+            <h3>Production-standard multimodal RAG</h3>
+            <p><span class="tag accent">Mature</span><span class="tag">Text-first</span><span class="tag">Observable citations</span></p>
+            <p>Most deployed systems still convert documents into text or Markdown, preserve layout/table metadata where possible, chunk semantically, run vector or hybrid retrieval, rerank candidates, and attach original images or page references at answer time. LlamaParse positions complex-document parsing as a first-class step and explicitly supports tables, images, charts, and diagrams. NVIDIA's RAG Blueprint documents image extraction, VLM captioning at ingestion, and cited images flowing into VLM answer generation.</p>
+            <p class="small">Best fit: exact text, definitions, procedures, identifiers, large corpora, and lower-cost retrieval.</p>
+          </article>
+          <article class="card">
+            <h3>Cutting-edge multimodal RAG</h3>
+            <p><span class="tag accent">Fast-moving</span><span class="tag warn">Storage-heavy</span><span class="tag">Page-as-image</span></p>
+            <p>The research frontier retrieves rendered page images directly. ColPali introduced VLM page embeddings with late interaction. M3DocRAG, VisRAG, and VDocRAG show that visual retrieval can outperform text RAG on questions whose evidence is in charts, tables, figures, or layout. ViDoRe V3, Argus-Retriever, and Nemotron ColEmbed V2 show the 2026 trend: late interaction, visual reranking, and agentic retrieval pipelines.</p>
+            <p class="small">Best fit: charts, diagrams, scanned pages, visual tables, spatial layout, and failures caused by parsing loss.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="metrics">
+        <h2>Quantitative Comparison</h2>
+        <p class="lead">The table compares methods by the benchmark and metric each paper reports. Treat the numbers as directional evidence, not a single leaderboard, because the datasets, metrics, and candidate pools differ.</p>
+
+        <div class="chart-row" aria-label="Benchmark charts">
+          <figure>
+            <img src="assets/vidore_retrieval_ndcg.png" alt="Horizontal bar chart comparing ViDoRe V1 average NDCG@5 retrieval scores. ColPali leads at 81.3, followed by text-first multimodal baselines near 65 to 67.">
+            <figcaption>ColPali's page-image late interaction creates a large retrieval gap on ViDoRe V1 against text-first OCR/captioning pipelines.</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/m3docrag_f1.png" alt="Grouped bar chart comparing M3DocVQA F1 for text RAG and M3DocRAG at top-1, top-2, and top-4 retrieved pages.">
+            <figcaption>M3DocRAG shows the end-to-end effect: visual retrieval plus a VLM generator improves open-domain DocVQA F1 at every top-k setting.</figcaption>
+          </figure>
+        </div>
+
+        <figure style="margin-top: 18px;">
+          <img src="assets/frontier_visual_retrieval.png" alt="Horizontal bar chart showing frontier visual retrieval scores for Argus, ColQwen2.5, ColPali, Nemotron ColEmbed V2, and Argus agentic pipeline.">
+          <figcaption>Recent models move beyond original ColPali, but later scores mix ViDoRe versions and metrics; compare within each benchmark version.</figcaption>
+        </figure>
+
+        <div class="table-wrap" style="margin-top: 22px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Method / benchmark</th>
+                <th>Reported metric</th>
+                <th>Best reported number</th>
+                <th>Comparison point</th>
+                <th>Usefulness for Grid</th>
+                <th>Source quality</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>LlamaParse Agentic on ParseBench</td>
+                <td>Overall parser score plus tables, charts, faithfulness, semantic formatting, visual grounding</td>
+                <td>84.88 overall; charts 78.11; visual grounding 80.62; 1.25 cents/page</td>
+                <td>Ranked first in ParseBench top-10 at research time</td>
+                <td>Justifies using Agentic parsing for complex PDFs before retrieval</td>
+                <td>Vendor-adjacent benchmark; deterministic rule-based evaluation</td>
+              </tr>
+              <tr>
+                <td>ColPali on ViDoRe V1</td>
+                <td>Average NDCG@5 across page-level retrieval tasks</td>
+                <td>81.3</td>
+                <td>Unstructured + captioning + BGE-M3: 67.0</td>
+                <td>Strong evidence for adding page-image retrieval</td>
+                <td>ICLR 2025 paper and public benchmark</td>
+              </tr>
+              <tr>
+                <td>M3DocRAG on M3DocVQA</td>
+                <td>Open-domain DocVQA F1 / EM, top-k retrieved pages</td>
+                <td>36.5 F1 / 31.4 EM at top-4</td>
+                <td>Text RAG baseline: 23.7 F1 / 17.8 EM at top-4</td>
+                <td>Shows visual page retrieval improves answer quality, not only retrieval</td>
+                <td>ICCV 2025 workshop paper</td>
+              </tr>
+              <tr>
+                <td>M3DocRAG on MP-DocVQA</td>
+                <td>ANLS / page accuracy</td>
+                <td>0.8444 ANLS / 81.05 page accuracy</td>
+                <td>Text RAG baseline: 0.5603 ANLS / 75.33 page accuracy</td>
+                <td>Useful proxy for multi-page PDFs with visual evidence</td>
+                <td>ICCV 2025 workshop paper</td>
+              </tr>
+              <tr>
+                <td>M3DocRAG indexing tradeoff</td>
+                <td>Retrieval latency on about 40K pages</td>
+                <td>IVFFlat: 1.8s/query; IVFPQ: 0.2s/query</td>
+                <td>FlatIP exact retrieval: 21.0s/query</td>
+                <td>Important for productionizing page-image indexes</td>
+                <td>ICCV 2025 workshop paper</td>
+              </tr>
+              <tr>
+                <td>MMDocRAG benchmark</td>
+                <td>Quote-selection F1 and judged answer quality</td>
+                <td>GPT-4.1: 70.2 F1 and 4.14 answer quality</td>
+                <td>Benchmark spans 4,055 QA pairs, 222 long documents, 48,618 text quotes, and 32,071 image quotes</td>
+                <td>Supports hybrid text/image evidence and interleaved visual citations</td>
+                <td>Project page and arXiv-linked benchmark</td>
+              </tr>
+              <tr>
+                <td>VisRAG</td>
+                <td>End-to-end multimodal document RAG accuracy</td>
+                <td>20-40% reported end-to-end gain over text RAG</td>
+                <td>GPT-4o visual top-3 generation: 52.22 average vs GPT-4o OCR top-3: 41.65 in the paper tables</td>
+                <td>Evidence that preserving original page images reduces parsing loss</td>
+                <td>arXiv preprint, revised 2025</td>
+              </tr>
+              <tr>
+                <td>VDocRAG / OpenDocVQA</td>
+                <td>Retrieval NDCG@5 and QA accuracy across visually rich documents</td>
+                <td>ChartQA QA: 52.0 / 48.0; SlideVQA QA: 44.2 / 42.0</td>
+                <td>Text-based RAG: ChartQA 28.0 / 28.0; SlideVQA 28.6 / 28.0</td>
+                <td>Shows benefit of representing PDFs/PPTX as images for charts, tables, figures, diagrams</td>
+                <td>CVPR 2025 paper and project page</td>
+              </tr>
+              <tr>
+                <td>PageIndex</td>
+                <td>Vendor-reported FinanceBench accuracy</td>
+                <td>98.7%</td>
+                <td>Not directly comparable to visual retrieval benchmarks</td>
+                <td>Useful as a complementary long-document structural retriever</td>
+                <td>Vendor GitHub README; validate on Grid PDFs</td>
+              </tr>
+              <tr>
+                <td>GraphRAG</td>
+                <td>LLM-judged comprehensiveness and diversity on global questions</td>
+                <td>Substantial wins over conventional RAG on global sensemaking questions</td>
+                <td>Not an exact-value lookup benchmark</td>
+                <td>Use for cross-document themes, entity relationships, and synthesis</td>
+                <td>Microsoft research paper, revised 2025</td>
+              </tr>
+              <tr>
+                <td>Argus-Retriever</td>
+                <td>ViDoRe V1 NDCG@5; combined V1+V2 NDCG@5; ViDoRe V3 NDCG@10</td>
+                <td>92.67 on V1; 86.0 on V1+V2; 64.80 on V3 with agentic pipeline</td>
+                <td>New June 2026 preprint</td>
+                <td>Shows current frontier: query-conditioned late interaction plus agentic retrieval</td>
+                <td>Very new arXiv preprint</td>
+              </tr>
+              <tr>
+                <td>Nemotron ColEmbed V2</td>
+                <td>ViDoRe V3 average NDCG@10</td>
+                <td>63.42 for the 8B model as of Feb. 3, 2026</td>
+                <td>Late-interaction VLM embeddings, with storage/compute engineering discussion</td>
+                <td>Candidate family if NVIDIA ecosystem alignment matters</td>
+                <td>ECIR 2026 workshop paper / arXiv</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="current-design">
+        <h2>Evidence for the Current Design</h2>
+        <p class="lead">The exact character-span overlap algorithm is project-specific. The sources support the broader design principle: preserve structured document text, describe visual evidence for text retrieval, keep image provenance, and attach original images or page citations when evidence is visual.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Current Grid design element</th>
+                <th>Source-backed justification</th>
+                <th>Implementation caveat</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>LlamaParse Agentic for complex PDFs</td>
+                <td>LlamaParse official docs state that it targets complex documents and handles tables, images, and charts; ParseBench ranks LlamaParse Agentic first with 84.88 overall on a benchmark organized around tables, charts, faithfulness, formatting, and visual grounding.</td>
+                <td>ParseBench is maintained in the LlamaIndex ecosystem. Run a Grid-specific parse benchmark for any final vendor choice.</td>
+              </tr>
+              <tr>
+                <td>VLM enrichment of figure crops</td>
+                <td>ColPali's baseline discussion treats VLM captioning of visual elements as a common way to integrate images into text retrieval. NVIDIA RAG Blueprint also documents image extraction and captioning at ingestion so images can be indexed and later cited.</td>
+                <td>Captions are lossy and can hallucinate. Keep the original crop/page image as the audit artifact.</td>
+              </tr>
+              <tr>
+                <td>Semantic chunking + vector retrieval + reranker</td>
+                <td>ColPali describes the standard industrial PDF retrieval pipeline as parsing/OCR, layout detection, semantic chunks, and optional visual captioning. Voyage documents rerankers as a second-stage API that sorts candidate documents by relevance score with long context limits for <code>rerank-2.5</code>.</td>
+                <td>Chunking strategy is workload-sensitive. Keep semantic chunking, but evaluate against fixed/hierarchical chunking on Grid questions.</td>
+              </tr>
+              <tr>
+                <td>PageIndex as a structural retrieval tool</td>
+                <td>PageIndex describes a vectorless, reasoning-based tree index over long documents with traceable page/section references and no artificial chunking.</td>
+                <td>The 98.7% FinanceBench claim is vendor-reported. Treat PageIndex as complementary, especially for long, structured documents.</td>
+              </tr>
+              <tr>
+                <td>GraphRAG as a cross-document tool</td>
+                <td>The GraphRAG paper says conventional RAG fails on global corpus questions and reports stronger comprehensiveness/diversity for global sensemaking over large private corpora.</td>
+                <td>Use it for themes, relationships, and multi-document synthesis. It is not the fastest precise lookup tool.</td>
+              </tr>
+              <tr>
+                <td>Attach figures when retrieved text overlaps a <code>FigureRecord</code> span</td>
+                <td>MMDocRAG explicitly evaluates multimodal quote selection and interleaved text-image answers. NVIDIA's VLM RAG flow also retrieves documents, identifies images, and passes cited images to the VLM. This supports returning image evidence with citations.</td>
+                <td>The offset-overlap and same-page fallback logic are local engineering choices. They are good choices if offsets are stable and manifest records are versioned with the corpus text.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="visual-tool">
+        <h2>Proposed Fourth Retrieval Tool</h2>
+        <div class="grid-2">
+          <div>
+            <p class="lead"><code>visual_page_retrieval</code> should be a parallel candidate generator over rendered page images. It should return page-level evidence with enough provenance for the agent to fuse it with text snippets, PageIndex nodes, GraphRAG summaries, and <code>FigureRecord</code> crops.</p>
+            <h3>When the agent should call it</h3>
+            <ul class="checklist">
+              <li>The user mentions a figure, chart, plot, diagram, screenshot, table image, page layout, visual comparison, axis, legend, or caption.</li>
+              <li>Vector/PageIndex retrieval returns low-confidence candidates, contradictory snippets, or nearby text without the figure block.</li>
+              <li>The expected answer depends on visual spatial relations, trends in a chart, or content not faithfully represented in extracted Markdown.</li>
+              <li>The user asks for the source page or wants to inspect the cited evidence visually.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Minimal tool contract</h3>
+            <pre><code>{
+  "tool": "visual_page_retrieval",
+  "input": {
+    "query": "What does Figure 4 show about ...?",
+    "top_k": 5,
+    "filters": {"document_key": "..."}
+  },
+  "output": [{
+    "document_key": "grid-paper-001",
+    "page": 12,
+    "score": 0.84,
+    "page_image_uri": "s3://.../pages/page-0012.png",
+    "text_span": {"start_char": 120331, "end_char": 124980},
+    "candidate_figure_ids": ["fig-0012-02"],
+    "rationale": "retrieved page image; visual match"
+  }]
+}</code></pre>
+          </div>
+        </div>
+
+        <h3>Build-time design</h3>
+        <div class="grid-3">
+          <article class="card">
+            <h3>1. Render</h3>
+            <p>Render each PDF page to a stable image, store it alongside document key, page number, dimensions, corpus character span, and S3/local URI.</p>
+          </article>
+          <article class="card">
+            <h3>2. Embed</h3>
+            <p>Index page images with a late-interaction visual document retriever. Start with ColPali or ColQwen for availability; track Nemotron/Argus for frontier experiments.</p>
+          </article>
+          <article class="card">
+            <h3>3. Fuse</h3>
+            <p>At query time, combine visual pages with vector/reranker, PageIndex, and GraphRAG results using agent routing, reciprocal rank fusion, or a reranker pass over normalized evidence.</p>
+          </article>
+        </div>
+
+        <div class="callout warning">
+          <p><strong>Do not replace text retrieval.</strong> MMDocRAG's analysis says visual retrievers are better for image content, text retrievers are better for text content, and hybrid retrieval is more balanced. For Grid, a hybrid stack is safer than a visual-only rewrite.</p>
+        </div>
+      </section>
+
+      <section id="roadmap">
+        <h2>Practical Roadmap</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Phase</th>
+                <th>What to build</th>
+                <th>Success metric</th>
+                <th>Risk to watch</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>0. Baseline eval</td>
+                <td>Create 50-100 Grid QA pairs labeled by evidence type: text-only, figure, chart/table, layout, cross-document.</td>
+                <td>Answer accuracy, evidence recall@5, figure/page citation correctness, latency.</td>
+                <td>Without a local eval set, benchmark numbers will not predict Grid performance.</td>
+              </tr>
+              <tr>
+                <td>1. Page manifest</td>
+                <td>Render page images and store a <code>page_image_manifest.jsonl</code> aligned to corpus spans and FigureRecords.</td>
+                <td>Every retrieved page can be mapped back to document, page, text span, and S3/local URI.</td>
+                <td>Page numbering and character spans must remain stable across parse rebuilds.</td>
+              </tr>
+              <tr>
+                <td>2. Visual index prototype</td>
+                <td>Build a small ColPali/ColQwen index for the Grid subset and expose a local retrieval tool.</td>
+                <td>Higher recall on figure/chart/layout questions than vector-only retrieval.</td>
+                <td>Late-interaction indexes are larger than single-vector indexes; storage and GPU cost matter.</td>
+              </tr>
+              <tr>
+                <td>3. Agent integration</td>
+                <td>Add <code>visual_page_retrieval</code> as a Claude Agent SDK tool and include visual-page evidence in trajectory events.</td>
+                <td>Agent chooses the tool on visual questions and still uses text/PageIndex/GraphRAG for their strengths.</td>
+                <td>Too much tool freedom can increase latency. Add routing hints and max-call budgets.</td>
+              </tr>
+              <tr>
+                <td>4. Production hardening</td>
+                <td>Compress/quantize visual embeddings, cache page hits, and add runtime controls for visual retrieval top-k.</td>
+                <td>Latency/cost targets met while preserving visual evidence recall.</td>
+                <td>Compression can reduce recall; evaluate before and after.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="sources">
+        <h2>Sources</h2>
+        <p class="lead">These are the exact public sources used for the survey. Peer-reviewed or conference papers carry the most weight; vendor claims are marked in the report where relevant.</p>
+        <ol class="source-list">
+          <li id="src-llamaparse"><strong>LlamaParse docs.</strong> <a href="https://developers.api.llamaindex.ai/cloud/llamaparse">Overview of LlamaParse</a>. Used for complex parsing, tables, images, charts, diagrams, and Agentic tiers.</li>
+          <li id="src-parsebench"><strong>ParseBench.</strong> <a href="https://github.com/run-llama/ParseBench">run-llama/ParseBench</a>. Used for LlamaParse Agentic parser scores and dataset dimensions.</li>
+          <li id="src-nvidia"><strong>NVIDIA RAG Blueprint.</strong> <a href="https://docs.nvidia.com/rag/2.4.0/vlm.html">Vision-Language Model for Generation</a>. Used for image discovery, ingestion captioning, cited images, and VLM generation in a production RAG blueprint.</li>
+          <li id="src-colpali"><strong>ColPali / ViDoRe.</strong> <a href="https://ar5iv.labs.arxiv.org/html/2407.01449">ColPali: Efficient Document Retrieval with Vision Language Models</a>. Used for page-image retrieval, standard pipeline baselines, ViDoRe V1 NDCG@5, latency, and captioning baseline discussion.</li>
+          <li id="src-m3docrag"><strong>M3DocRAG arXiv.</strong> <a href="https://arxiv.org/abs/2411.04952">M3DocRAG: Multi-modal Retrieval is What You Need for Multi-page Multi-document Understanding</a>. Used for the motivation that OCR/text RAG misses figure evidence.</li>
+          <li id="src-m3docvqa"><strong>M3DocVQA CVF paper.</strong> <a href="https://openaccess.thecvf.com/content/ICCV2025W/Findings/html/Cho_M3DocVQA_Multi-modal_Multi-page_Multi-document_Understanding_ICCVW_2025_paper.html">M3DocVQA: Multi-modal Multi-page Multi-document Understanding</a>. Used for open-domain DocVQA dataset scale and M3DocRAG metrics; numeric table values were checked against the linked PDF.</li>
+          <li id="src-mmdocrag"><strong>MMDocRAG.</strong> <a href="https://mmdocrag.github.io/MMDocRAG/">MMDocRAG project page</a>. Used for multimodal quote selection, VLM-generated text, interleaved text-image answers, and hybrid retriever findings.</li>
+          <li id="src-visrag"><strong>VisRAG.</strong> <a href="https://arxiv.org/abs/2410.10594">VisRAG: Vision-based Retrieval-augmented Generation on Multi-modality Documents</a>. Used for visual page RAG motivation and reported 20-40% end-to-end gain over text RAG.</li>
+          <li id="src-vdocrag"><strong>VDocRAG.</strong> <a href="https://arxiv.org/abs/2504.09795">VDocRAG arXiv</a> and <a href="https://vdocrag.github.io/">project page</a>. Used for unified image-format RAG, OpenDocVQA scale, and visually rich document QA metrics.</li>
+          <li id="src-pageindex"><strong>PageIndex.</strong> <a href="https://github.com/VectifyAI/PageIndex">VectifyAI/PageIndex</a>. Used for vectorless tree-index retrieval, traceability claims, deployment modes, and vendor-reported FinanceBench result.</li>
+          <li id="src-graphrag"><strong>GraphRAG.</strong> <a href="https://arxiv.org/abs/2404.16130">From Local to Global: A Graph RAG Approach to Query-Focused Summarization</a>. Used for global sensemaking limitations of conventional RAG and GraphRAG's intended use.</li>
+          <li id="src-voyage"><strong>Voyage AI rerankers.</strong> <a href="https://docs.voyageai.com/docs/reranker">Reranker documentation</a>. Used for reranker API behavior, candidate reranking, and long context limits for <code>rerank-2.5</code>.</li>
+          <li id="src-semantic"><strong>LlamaIndex semantic chunking.</strong> <a href="https://developers.llamaindex.ai/python/examples/node_parsers/semantic_chunking/">Semantic Chunker example</a>. Used for semantic chunking implementation context.</li>
+          <li id="src-vidorev3"><strong>ViDoRe V3.</strong> <a href="https://arxiv.org/abs/2601.08620">ViDoRe V3: A Comprehensive Evaluation of RAG in Complex Real-World Scenarios</a>. Used for 2026 benchmark scope and findings about visual retrievers, late interaction, reranking, hybrid contexts, and grounding gaps.</li>
+          <li id="src-argus"><strong>Argus-Retriever.</strong> <a href="https://arxiv.org/abs/2606.04300">Argus-Retriever: Vision-LLM Late-Interaction Retrieval</a>. Used for June 2026 frontier scores and query-conditioned late-interaction design.</li>
+          <li id="src-nemotron"><strong>Nemotron ColEmbed V2.</strong> <a href="https://arxiv.org/abs/2602.03992">Nemotron ColEmbed V2</a>. Used for 2026 ViDoRe V3 result and discussion of VLM-based visual document embeddings.</li>
+        </ol>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        Static report for GitHub Pages. No external JavaScript or remote assets are required.
+      </div>
+    </footer>
+  </body>
+</html>

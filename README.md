@@ -353,7 +353,15 @@ The actual image crop is linked after retrieval through the manifest. Index node
 
 Each retrieval hit becomes an `Evidence` object with document title, page, text span, score, method, and optional figure metadata.
 
-If the hit overlaps a `FigureRecord` text span, the evidence attaches that figure. If no direct span overlap is available, the retrieval layer falls back to figures on the same page.
+The figure match is based on character offsets in the parsed corpus text:
+
+- Each retrieval hit has `start_char` and `end_char` offsets for the returned text span.
+- Each accepted figure has a `FigureRecord` in the manifest. Its `start_char` and `end_char` normally cover the inserted `### Figure context - page N figure K` block, including the Markdown image link and VLM description.
+- A hit "overlaps" a figure when the two character ranges intersect: the hit starts before the figure block ends, and the figure block starts before the hit ends. For example, a retrieval span from character 10,000 to 10,900 overlaps a figure block from 10,400 to 10,750, so that evidence attaches the figure crop.
+
+If there is no direct text-span overlap, the retrieval layer falls back to figures on the same page. This covers cases where the retriever returns nearby page text but not the exact figure-context block.
+
+If neither span overlap nor same-page fallback finds a `FigureRecord`, the evidence is returned as text-only. The agent still receives the retrieved text chunk, title, page, score, and citation metadata, but it does not receive an image block.
 
 When a figure is attached:
 
@@ -362,7 +370,7 @@ When a figure is attached:
 - In AgentCore, the local crop exists because the runtime downloads S3 artifacts into `/tmp/grid-agent-core/artifacts` on first use.
 - The frontend displays cited source snippets and figure IDs/links when evidence includes figures.
 
-So the workflow is: figure crop -> VLM description inserted into text -> text is indexed -> retrieval returns a text span -> manifest overlap resolves the actual image -> the agent receives both description text and the image crop. If the parsed text contains only a raw Markdown image reference and no `FigureRecord`, retrieval can find surrounding text, but no actual image block is attached.
+So the workflow is: figure crop -> VLM description inserted into text -> text is indexed -> retrieval returns a text span -> character-span overlap, or same-page fallback, resolves the actual image from the manifest -> the agent receives both the description text and the image crop. If the parsed text contains only a raw Markdown image reference and no `FigureRecord`, retrieval can still return the surrounding text, but no actual image block is attached because there is no manifest record that maps that text back to a crop file.
 
 ## Upload Artifacts To AWS
 
