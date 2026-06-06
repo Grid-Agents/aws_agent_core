@@ -595,6 +595,8 @@ cd app/GridAgentCore
 set -a
 source ../../.env
 set +a
+export AGENTCORE_RUNTIME_ARN=$(jq -r '.targets.default.resources.runtimes.GridAgentCore.runtimeArn' ../../agentcore/.cli/deployed-state.json)
+export AGENTCORE_RUNTIME_QUALIFIER=DEFAULT
 uv run grid-local-api --port 8000
 ```
 
@@ -607,7 +609,150 @@ npm run dev
 
 Open `http://127.0.0.1:5173`.
 
-The UI posts the same payload, streams NDJSON events from `/api/grid/run`, and displays the answer, citations, root-agent turns, retrieval calls, subagent threads, latency, and errors. When cited evidence has attached figures, the source snippet card shows figure IDs and S3/local artifact links.
+The local API forwards `/api/grid/run` to the deployed AgentCore runtime when
+`AGENTCORE_RUNTIME_ARN` is set. The UI posts the same payload, streams NDJSON
+events, and displays the answer, citations, root-agent turns, retrieval calls,
+separate subagent threads, latency, and errors. Each trajectory turn is
+expandable; root-agent and subagent-owned turns are labeled separately. When
+cited evidence has attached figures, the source snippet card shows figure IDs
+and S3/local artifact links.
+
+### How The Frontend Connects To Deployed AgentCore
+
+The React frontend does not call AWS directly. It talks to the local FastAPI
+proxy in `grid_agent_core/local_api.py`.
+
+```text
+Browser frontend
+  -> POST /api/grid/run on local FastAPI
+  -> boto3 bedrock-agentcore.invoke_agent_runtime
+  -> deployed GridAgentCore runtime
+  -> streamed NDJSON trace/result events
+  -> frontend trajectory, citations, and answer
+```
+
+The switch between local execution and deployed execution is controlled by
+`AGENTCORE_RUNTIME_ARN`:
+
+- If `AGENTCORE_RUNTIME_ARN` is set, `/api/grid/run` forwards the request to the
+  deployed AgentCore runtime.
+- If `AGENTCORE_RUNTIME_ARN` is not set, `/api/grid/run` runs the local Python
+  agent process against local/S3-backed artifacts.
+
+For deployed testing, start the proxy with:
+
+```bash
+cd app/GridAgentCore
+set -a
+source ../../.env
+set +a
+export AGENTCORE_RUNTIME_ARN=$(jq -r '.targets.default.resources.runtimes.GridAgentCore.runtimeArn' ../../agentcore/.cli/deployed-state.json)
+export AGENTCORE_RUNTIME_QUALIFIER=DEFAULT
+uv run grid-local-api --port 8000
+```
+
+The local proxy requires AWS credentials with
+`bedrock-agentcore:InvokeAgentRuntime`. The browser does not need AWS
+credentials.
+
+### Terms Used In This Flow
+
+- **AgentCore** - AWS Bedrock AgentCore, the AWS service hosting and invoking
+  this deployed agent application.
+- **Runtime** - the deployed AgentCore application instance. For this project,
+  the runtime runs `app/GridAgentCore/main.py`, which starts the Grid agent and
+  streams events back to the caller.
+- **Runtime ARN** - the AWS identifier for the deployed runtime. The local proxy
+  reads it from `AGENTCORE_RUNTIME_ARN` so it knows which deployed agent to
+  invoke.
+- **Qualifier** - the deployed runtime version/alias to invoke. This project
+  uses `AGENTCORE_RUNTIME_QUALIFIER=DEFAULT` unless a different AgentCore
+  qualifier is created.
+- **boto3** - the official AWS SDK for Python. `grid-local-api` uses boto3 to
+  call `bedrock-agentcore.invoke_agent_runtime` from your local machine.
+- **FastAPI proxy / local API** - the local Python server started by
+  `uv run grid-local-api --port 8000`. It gives the browser a simple HTTP API
+  and hides AWS credentials from frontend JavaScript.
+- **Vite frontend** - the local React development server started by
+  `npm run dev`. It serves the browser UI at `http://127.0.0.1:5173`.
+- **NDJSON** - newline-delimited JSON. The server sends one JSON object per
+  line, so the frontend can render events as they arrive instead of waiting for
+  one large final JSON response.
+- **Trace event** - an intermediate streamed event with observable agent
+  activity such as a root-agent turn, tool call, retrieval result, subagent
+  call, citation selection, or error.
+- **Result event** - the final streamed event for a run. It includes status,
+  answer, citations, full trajectory, latency, model, artifact revision, and
+  errors.
+- **Trajectory** - the visible sequence of observable trace events. It is not
+  hidden model chain-of-thought.
+- **Subagent thread** - a grouped set of events created after the root agent
+  delegates a retrieval task to the `span-retriever` subagent.
+- **Artifact** - a parsed document, text corpus, figure crop, manifest, or index
+  file used by retrieval.
+- **Index** - a retrieval data structure built from Grid documents, such as the
+  vector index, PageIndex index, GraphRAG index, or exact-find text corpus.
+- **S3 artifact prefix** - the S3 location configured by `GRID_S3_BUCKET` and
+  `GRID_S3_PREFIX` where deployed runtimes download Grid artifacts.
+- **AWS credentials** - local IAM credentials from `.env` or your AWS profile.
+  They are required by the local proxy and AWS CLI, but should never be exposed
+  to frontend browser code.
+
+### Connect Another Frontend
+
+Build another frontend by using the same local/API-server contract. The frontend
+should call:
+
+```http
+POST http://127.0.0.1:8000/api/grid/run
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{
+  "prompt": "What does Gate 2 readiness require?",
+  "methods": ["vector", "pageindex", "find"],
+  "allow_sdk_file_tools": false,
+  "enable_subagents": true,
+  "runtime_session_id": "optional-stable-session-id"
+}
+```
+
+The response is `application/x-ndjson`. Read it as a stream and split on
+newlines. Each line is one JSON object:
+
+```json
+{"type":"trace","entry":{"id":1,"kind":"user","title":"Grid question","detail":"...","metadata":{}}}
+{"type":"trace","entry":{"id":2,"kind":"tool-call","title":"Requested mcp__grid_retrieval__vector_search","detail":"...","metadata":{"tool_use_id":"..."}}}
+{"type":"result","status":"completed","answer":"...","citations":[],"trajectory":[],"latency_ms":1234}
+```
+
+Important event fields:
+
+- `trace.entry.kind` tells the UI stage: `user`, `agent`, `subagent-call`,
+  `subagent`, `tool-call`, `retrieval`, `inspect`, `citation`, `result`, or
+  `error`.
+- `trace.entry.detail` is the expandable detail text or JSON string.
+- `trace.entry.metadata.tool_use_id` identifies a subagent/tool call.
+- `trace.entry.metadata.parent_tool_use_id` links explicit subagent child turns
+  to a root `subagent-call`.
+- Some deployed SDK streams omit `parent_tool_use_id` on subagent retrieval
+  tool events. The current React UI groups retrieval/tool/inspect events after a
+  `subagent-call` and before the next root-agent text turn as subagent-managed
+  activity.
+- `result.answer` is the final cited answer.
+- `result.citations` are the source snippets to show beside the answer.
+- `result.trajectory` is the final full trajectory copy.
+
+Do not label this as hidden model chain-of-thought. The stream exposes
+observable agent events: user prompt, root-agent text, subagent calls, tool
+requests, retrieval results, citations, latency, and errors.
+
+For a browser app hosted somewhere other than `127.0.0.1:5173` or
+`localhost:5173`, add that origin to the CORS allow list in
+`grid_agent_core/local_api.py`.
 
 ## Test Console (single page, no build)
 
