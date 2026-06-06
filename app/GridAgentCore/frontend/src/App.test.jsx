@@ -44,6 +44,36 @@ describe("Grid Agents UI", () => {
         body: ndjsonStream([
           { type: "trace", entry: { id: 1, kind: "retrieval", title: "Searched find", detail: "Gate 2", metadata: {} } },
           {
+            type: "trace",
+            entry: {
+              id: 2,
+              kind: "subagent-call",
+              title: "Requested Agent",
+              detail: JSON.stringify({ description: "Check Gate 2 evidence" }),
+              metadata: { tool_use_id: "subagent-1" },
+            },
+          },
+          {
+            type: "trace",
+            entry: {
+              id: 3,
+              kind: "retrieval",
+              title: "Searched vector",
+              detail: "Gate 2 evidence requirements",
+              metadata: { evidence_ids: ["E1"], span_count: 1 },
+            },
+          },
+          {
+            type: "trace",
+            entry: {
+              id: 4,
+              kind: "subagent",
+              title: "Subagent",
+              detail: "Subagent evidence note.",
+              metadata: { parent_tool_use_id: "subagent-1" },
+            },
+          },
+          {
             type: "result",
             status: "completed",
             answer: "Gate 2 requires evidence [E1].",
@@ -72,6 +102,11 @@ describe("Grid Agents UI", () => {
 
     await waitFor(() => expect(screen.getByText("Gate 2 requires evidence [E1].")).toBeTruthy());
     expect(screen.getByText("Searched find")).toBeTruthy();
+    expect(screen.getByText("Root Agent Timeline")).toBeTruthy();
+    expect(screen.getByText("Subagent Threads")).toBeTruthy();
+    expect(screen.getByText("Check Gate 2 evidence")).toBeTruthy();
+    expect(screen.getByText("2 turns")).toBeTruthy();
+    expect(screen.getByText("Subagent evidence note.")).toBeTruthy();
     expect(screen.getByText(/Evidence text/)).toBeTruthy();
   });
 

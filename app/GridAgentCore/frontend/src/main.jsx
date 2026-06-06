@@ -11,6 +11,7 @@ const TOOL_LABELS = {
 
 const DEFAULT_PROMPT =
   "What do the Grid Code and connections reform documents say about Gate 2 readiness and evidence requirements?";
+const SUBAGENT_ACTIVITY_KINDS = new Set(["tool-call", "retrieval", "inspect"]);
 
 function App() {
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
@@ -47,6 +48,7 @@ function App() {
     const tools = overview?.tools || [];
     return Object.fromEntries(tools.map((tool) => [tool.id, tool.ready]));
   }, [overview]);
+  const trajectory = useMemo(() => buildTrajectoryViews(events), [events]);
 
   async function runAgent() {
     const cleanPrompt = prompt.trim();
@@ -89,6 +91,9 @@ function App() {
           } else if (event.type === "result") {
             setResult(event);
             setStatus(event.status || "completed");
+            if (event.status === "error" && event.error) {
+              setError(event.error);
+            }
           }
         }
       }
@@ -209,7 +214,7 @@ function App() {
           <section className="trace-panel">
             <PanelHeader title="Observable Trajectory" count={events.length} />
             {events.length ? (
-              events.map((event) => <TraceItem key={event.id} event={event} />)
+              <TrajectoryView trajectory={trajectory} />
             ) : (
               <p className="empty-text">Waiting for SDK events.</p>
             )}
@@ -265,11 +270,17 @@ function EvidenceItem({ item }) {
 }
 
 function TraceItem({ event }) {
+  const owner = ownerLabel(event);
+  const stage = stageLabel(event);
   return (
-    <details className={`trace-item ${event.kind}`} open={event.kind === "result" || event.kind === "error"}>
+    <details
+      className={`trace-item ${event.kind} ${owner === "Subagent" ? "owned-subagent" : "owned-root"}`}
+      open={event.kind === "result" || event.kind === "error"}
+    >
       <summary>
-        <span>{event.kind}</span>
+        <span className="trace-kind">{stage}</span>
         <strong>{event.title}</strong>
+        <span className="owner-pill">{owner}</span>
       </summary>
       <p>{event.detail}</p>
       {event.metadata && Object.keys(event.metadata).length ? (
@@ -277,6 +288,154 @@ function TraceItem({ event }) {
       ) : null}
     </details>
   );
+}
+
+function TrajectoryView({ trajectory }) {
+  return (
+    <div className="trajectory-stack">
+      <section className="trajectory-section">
+        <div className="trajectory-heading">
+          <h3>Root Agent Timeline</h3>
+          <span>{trajectory.rootEvents.length}</span>
+        </div>
+        {trajectory.rootEvents.map((event) => (
+          <TraceItem key={event.id} event={event} />
+        ))}
+      </section>
+
+      <section className="trajectory-section subagent-section">
+        <div className="trajectory-heading">
+          <h3>Subagent Threads</h3>
+          <span>{trajectory.subagentThreads.length}</span>
+        </div>
+        {trajectory.subagentThreads.length ? (
+          trajectory.subagentThreads.map((thread, index) => (
+            <article className="subagent-thread" key={thread.id || index}>
+              <header>
+                <div>
+                  <strong>{thread.title}</strong>
+                  <span>{thread.id ? `thread ${thread.id.slice(0, 8)}` : "unlinked thread"}</span>
+                </div>
+                <span>{thread.events.length} turns</span>
+              </header>
+              {thread.call ? <TraceItem event={thread.call} /> : null}
+              {thread.events.map((event) => (
+                <TraceItem key={event.id} event={event} />
+              ))}
+            </article>
+          ))
+        ) : (
+          <p className="empty-text">No subagent events streamed for this run.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function buildTrajectoryViews(events) {
+  const calls = new Map();
+  const rootEvents = [];
+  const orphanSubagentEvents = [];
+  let activeSubagentId = "";
+
+  for (const event of events) {
+    if (event.kind === "subagent-call") {
+      const id = event.metadata?.tool_use_id || `subagent-call-${event.id}`;
+      calls.set(id, {
+        id,
+        call: event,
+        title: summarizeSubagentCall(event),
+        events: [],
+      });
+      activeSubagentId = id;
+      rootEvents.push(event);
+      continue;
+    }
+
+    const parentId = event.metadata?.parent_tool_use_id;
+    if (parentId) {
+      if (!calls.has(parentId)) {
+        calls.set(parentId, {
+          id: parentId,
+          call: null,
+          title: "span-retriever",
+          events: [],
+        });
+      }
+      calls.get(parentId).events.push(event);
+      continue;
+    }
+
+    if (activeSubagentId && SUBAGENT_ACTIVITY_KINDS.has(event.kind)) {
+      calls.get(activeSubagentId)?.events.push({
+        ...event,
+        metadata: {
+          ...(event.metadata || {}),
+          inferred_parent_tool_use_id: activeSubagentId,
+        },
+      });
+      continue;
+    }
+
+    if (event.kind === "subagent") {
+      orphanSubagentEvents.push(event);
+      continue;
+    }
+
+    if (["agent", "user", "result", "error"].includes(event.kind)) {
+      activeSubagentId = "";
+    }
+    rootEvents.push(event);
+  }
+
+  if (orphanSubagentEvents.length) {
+    calls.set("unlinked-subagent-events", {
+      id: "",
+      call: null,
+      title: "span-retriever",
+      events: orphanSubagentEvents,
+    });
+  }
+
+  return {
+    rootEvents,
+    subagentThreads: Array.from(calls.values()),
+  };
+}
+
+function summarizeSubagentCall(event) {
+  try {
+    const payload = JSON.parse(event.detail || "{}");
+    return payload.description || payload.prompt || payload.task || "span-retriever";
+  } catch {
+    return "span-retriever";
+  }
+}
+
+function ownerLabel(event) {
+  if (
+    event.kind === "subagent" ||
+    event.metadata?.parent_tool_use_id ||
+    event.metadata?.inferred_parent_tool_use_id
+  ) {
+    return "Subagent";
+  }
+  return "Root Agent";
+}
+
+function stageLabel(event) {
+  return {
+    user: "question",
+    agent: "root turn",
+    subagent: "subagent turn",
+    "tool-call": "tool call",
+    "subagent-call": "subagent call",
+    retrieval: "retrieval",
+    inspect: "inspect",
+    citation: "citation",
+    result: "result",
+    error: "error",
+  }[event.kind] || event.kind;
 }
 
 const root = document.getElementById("root");

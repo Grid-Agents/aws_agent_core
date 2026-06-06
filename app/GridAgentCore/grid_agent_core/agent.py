@@ -441,11 +441,14 @@ class GridAgentSession:
                             )
                         elif isinstance(block, ToolUseBlock):
                             is_subagent = block.name in {"Agent", "Task"}
+                            metadata = {"tool_use_id": str(getattr(block, "id", "") or "")}
+                            if parent_tool_use_id:
+                                metadata["parent_tool_use_id"] = parent_tool_use_id
                             yield self.trace(
                                 "subagent-call" if is_subagent else "tool-call",
                                 f"Requested {block.name}",
                                 json.dumps(block.input, sort_keys=True),
-                                {"tool_use_id": str(getattr(block, "id", "") or "")},
+                                metadata,
                             )
                 elif isinstance(message, ResultMessage):
                     for pending in self.drain_pending():

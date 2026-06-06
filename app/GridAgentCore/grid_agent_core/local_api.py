@@ -60,7 +60,7 @@ def _agentcore_event_lines(payload: dict[str, Any]) -> Iterable[str]:
     arn = _agentcore_runtime_arn()
     if not arn:
         return []
-    runtime_session_id = payload.pop("runtime_session_id", None) or uuid.uuid4().hex
+    runtime_session_id = payload.pop("runtime_session_id", None) or str(uuid.uuid4())
     qualifier = os.getenv("AGENTCORE_RUNTIME_QUALIFIER", "").strip()
     request: dict[str, Any] = {
         "agentRuntimeArn": arn,
@@ -78,32 +78,58 @@ def _agentcore_event_lines(payload: dict[str, Any]) -> Iterable[str]:
         return []
     raw_lines = body.iter_lines() if hasattr(body, "iter_lines") else body
     buffered = ""
+    decoder = json.JSONDecoder()
     for chunk in raw_lines:
         if not chunk:
             continue
         text = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
-        if "text/event-stream" in content_type and text.startswith("data: "):
-            text = text[6:]
-        buffered += text
-        for line in buffered.splitlines(keepends=True):
-            if not line.endswith(("\n", "\r")):
-                buffered = line
-                break
-            yield _normalize_event_line(line.strip())
-        else:
-            buffered = ""
+        for event_text in _agentcore_event_texts(text, content_type=content_type):
+            buffered += event_text
+            lines, buffered = _pop_json_event_lines(buffered, decoder=decoder, final=False)
+            for line in lines:
+                yield line
     if buffered.strip():
-        yield _normalize_event_line(buffered.strip())
+        lines, buffered = _pop_json_event_lines(buffered, decoder=decoder, final=True)
+        for line in lines:
+            yield line
 
 
-def _normalize_event_line(line: str) -> str:
-    if not line:
-        return ""
-    try:
-        json.loads(line)
-        return line + "\n"
-    except json.JSONDecodeError:
-        return json.dumps({"type": "trace", "entry": {"kind": "agentcore", "detail": line}}) + "\n"
+def _agentcore_event_texts(text: str, *, content_type: str) -> Iterable[str]:
+    if "text/event-stream" not in content_type:
+        yield text
+        return
+    for line in text.splitlines():
+        if line.startswith("data: "):
+            line = line[6:]
+        if line and line != "[DONE]":
+            yield line
+
+
+def _pop_json_event_lines(
+    buffered: str,
+    *,
+    decoder: json.JSONDecoder,
+    final: bool,
+) -> tuple[list[str], str]:
+    lines: list[str] = []
+    while buffered.strip():
+        stripped = buffered.lstrip()
+        try:
+            payload, end = decoder.raw_decode(stripped)
+        except json.JSONDecodeError:
+            if final:
+                lines.append(
+                    json.dumps(
+                        {"type": "trace", "entry": {"kind": "agentcore", "detail": stripped}},
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+                return lines, ""
+            return lines, buffered
+        lines.append(json.dumps(payload, ensure_ascii=False) + "\n")
+        buffered = stripped[end:]
+    return lines, buffered
 
 
 @app.get("/api/health")
