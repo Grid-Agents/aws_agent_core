@@ -354,6 +354,7 @@ function onEvent(ev){
   if(ev.type!=="trace") return;
   const en=ev.entry, k=en.kind;
   if(k==="user"){ $("#st-question").textContent="1"; actStage("question"); }
+  else if(k==="agentcore"){ actStage("searches"); tick("agentcore", en.detail||"calling deployed runtime"); }
   else if(k==="agent"){ actStage("searches"); tick("agent", (en.detail||"").slice(0,180)); }
   else if(k==="subagent"){ tick("subagent", (en.detail||"").slice(0,180),"subagent"); }
   else if(k==="tool-call"||k==="subagent-call"){
@@ -398,6 +399,11 @@ function figEls(figs){
   return fw;
 }
 let lastMapResult=null, mapMethod="all";
+function resultErrors(r){
+  const errs = Array.isArray(r.errors) ? [...r.errors] : [];
+  if(r.error) errs.push(r.error);
+  return errs;
+}
 function renderMap(r){
   lastMapResult=r; mapMethod="all";
   actStage("answer"); $("#st-answer").textContent="✓";
@@ -461,8 +467,9 @@ function drawMap(){
     <div class="blk"><div class="cap">Result</div><span class="status ${r.status}">${r.status}</span><div class="cited-by">${r.latency_ms} ms</div></div>`;
   b.append(fn);
 
+  const errs = resultErrors(r);
+  if(errs.length) b.append(el("div","errbox","<b>error:</b> "+esc(errs.join(" | "))));
   if(!ev.length){ b.append(el("p","empty",sole?`No evidence retrieved by ${esc(mapMethod)} for this run.`:"No evidence was retrieved.")); return; }
-  if(r.errors&&r.errors.length) b.append(el("div","errbox","<b>error:</b> "+esc(r.errors.join(" | "))));
 
   // 3) CITED — the headline: what the answer stands on (full detail, grouped by doc)
   b.append(el("div","sec-h",`<span class="lbl">Cited — what the answer is built on</span><span class="ct">${cites.length} span${cites.length!==1?"s":""}</span>`));
@@ -519,7 +526,8 @@ function renderAnswer(r){
   const head=el("div"); head.style.margin="14px 0 4px";
   head.innerHTML=`<span class="status ${r.status}">${r.status}</span> <span class="ovchip">${r.latency_ms} ms</span> <span class="ovchip">${(r.methods||[]).join(", ")}</span>`;
   b.append(head);
-  if(r.errors&&r.errors.length) b.append(el("div","errbox","<b>errors:</b> "+esc(r.errors.join(" | "))));
+  const errs = resultErrors(r);
+  if(errs.length) b.append(el("div","errbox","<b>errors:</b> "+esc(errs.join(" | "))));
   const a=el("div","answer");
   try{ a.innerHTML = window.marked?marked.parse(r.answer||""):"<pre>"+esc(r.answer)+"</pre>"; }catch{ a.textContent=r.answer||""; }
   b.append(a);
@@ -536,6 +544,7 @@ async function run(){
   const methods=$$('#methods input:checked').map(c=>c.value);
   const body={prompt,methods,enable_subagents:$("#subagents").checked,allow_sdk_file_tools:$("#filetools").checked};
   resetLive(methods); $("#traj").innerHTML=""; $("#traj-empty").style.display="none";
+  $("#st-question").textContent="1"; actStage("question"); tick("frontend","request sent to /api/grid/run");
   $("#map-body").innerHTML='<p class="empty"><span class="spin"></span>running…</p>';
   $("#answer-body").innerHTML='<p class="empty"><span class="spin"></span>running…</p>';
   document.body.classList.add("running"); $("#run").disabled=true; showTab("live");
@@ -548,7 +557,11 @@ async function run(){
       buf+=dec.decode(value,{stream:true}); let nl;
       while((nl=buf.indexOf("\n"))>=0){ const line=buf.slice(0,nl).trim(); buf=buf.slice(nl+1); if(!line)continue;
         let ev; try{ev=JSON.parse(line);}catch{continue;}
-        if(ev.type==="result") final=ev; else onEvent(ev);
+        if(ev.type==="result"){
+          final=ev;
+          const errs = resultErrors(ev);
+          if(errs.length) onEvent({type:"trace",entry:{kind:"error",title:"result error",detail:errs.join(" | ")}});
+        } else onEvent(ev);
         if(ev.type==="error") onEvent({type:"trace",entry:{kind:"error",title:"error",detail:ev.error}});
       }
     }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import re
@@ -316,9 +317,38 @@ async def run_grid(request: GridRunRequest) -> StreamingResponse:
 
     async def event_stream():
         try:
-            if _agentcore_runtime_arn():
+            runtime_arn = _agentcore_runtime_arn()
+            if runtime_arn:
+                qualifier = os.getenv("AGENTCORE_RUNTIME_QUALIFIER", "").strip()
+                yield json.dumps(
+                    {
+                        "type": "trace",
+                        "entry": {
+                            "id": 0,
+                            "kind": "agentcore",
+                            "title": "Invoking deployed AgentCore runtime",
+                            "detail": (
+                                "Forwarding this request to AWS Bedrock AgentCore. "
+                                "The deployed Claude/tool loop can take 60-120 seconds "
+                                "before model events arrive."
+                            ),
+                            "metadata": {
+                                "runtime_arn": runtime_arn,
+                                "qualifier": qualifier or None,
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                ) + "\n"
+                await asyncio.sleep(0)
                 for line in _agentcore_event_lines(dict(payload)):
                     if line:
+                        try:
+                            event = json.loads(line)
+                            if event.get("type") == "result":
+                                save_run_to_s3(payload, event)
+                        except Exception as exc:  # never break the stream on a save failure
+                            print(f"[runs] failed to save deployed run to S3: {exc}")
                         yield line
             else:
                 payload.pop("runtime_session_id", None)
@@ -330,8 +360,22 @@ async def run_grid(request: GridRunRequest) -> StreamingResponse:
                             print(f"[runs] failed to save run to S3: {exc}")
                     yield json.dumps(event, ensure_ascii=False) + "\n"
         except Exception as exc:
+            message = f"{type(exc).__name__}: {exc}"
             yield json.dumps(
-                {"type": "result", "status": "error", "error": f"{type(exc).__name__}: {exc}"},
+                {
+                    "type": "trace",
+                    "entry": {
+                        "id": 0,
+                        "kind": "error",
+                        "title": "Proxy or AgentCore invocation failed",
+                        "detail": message,
+                        "metadata": {},
+                    },
+                },
+                ensure_ascii=False,
+            ) + "\n"
+            yield json.dumps(
+                {"type": "result", "status": "error", "error": message},
                 ensure_ascii=False,
             ) + "\n"
 

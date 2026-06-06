@@ -129,6 +129,29 @@ ANTHROPIC_API_KEY=your-anthropic-key-for-vlm-and-graphrag
 VOYAGE_API_KEY=your-voyage-key-for-vector-and-graphrag
 ```
 
+After the AgentCore runtime is deployed, add the deployed runtime connection for
+local frontend testing:
+
+```bash
+# Local proxy only: tells grid-local-api to forward /api/grid/run to AWS
+# instead of running the agent locally.
+AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/GridAgentCore_GridAgentCore-xxxxxxxxxx
+# Leave blank for the base runtime ARN. Set only if you created a named runtime
+# endpoint/alias and know its qualifier.
+AGENTCORE_RUNTIME_QUALIFIER=
+```
+
+You can get the ARN from deployed state:
+
+```bash
+jq -r '.targets.default.resources.runtimes.GridAgentCore.runtimeArn' agentcore/.cli/deployed-state.json
+```
+
+`AGENTCORE_RUNTIME_ARN` is used by the local FastAPI proxy only. It is not a
+secret, but your local AWS credentials must be able to call
+`bedrock-agentcore:InvokeAgentRuntime`. Restart `grid-local-api` after changing
+`.env`; already-running Python processes do not reload new env values.
+
 Do not commit `.env`, AWS credentials, or API keys.
 
 ## Artifact Preflight
@@ -535,14 +558,16 @@ payload = {
 }
 
 client = boto3.client("bedrock-agentcore", region_name=os.environ["AWS_REGION"])
-response = client.invoke_agent_runtime(
-    agentRuntimeArn=os.environ["AGENTCORE_RUNTIME_ARN"],
-    runtimeSessionId=str(uuid.uuid4()),
-    payload=json.dumps(payload).encode("utf-8"),
-    contentType="application/json",
-    accept="application/json",
-    qualifier=os.getenv("AGENTCORE_RUNTIME_QUALIFIER") or "DEFAULT",
-)
+request = {
+    "agentRuntimeArn": os.environ["AGENTCORE_RUNTIME_ARN"],
+    "runtimeSessionId": str(uuid.uuid4()),
+    "payload": json.dumps(payload).encode("utf-8"),
+    "contentType": "application/json",
+    "accept": "application/json",
+}
+if os.getenv("AGENTCORE_RUNTIME_QUALIFIER"):
+    request["qualifier"] = os.environ["AGENTCORE_RUNTIME_QUALIFIER"]
+response = client.invoke_agent_runtime(**request)
 
 body = response.get("response", [])
 if hasattr(body, "iter_lines"):
@@ -596,7 +621,7 @@ set -a
 source ../../.env
 set +a
 export AGENTCORE_RUNTIME_ARN=$(jq -r '.targets.default.resources.runtimes.GridAgentCore.runtimeArn' ../../agentcore/.cli/deployed-state.json)
-export AGENTCORE_RUNTIME_QUALIFIER=DEFAULT
+export AGENTCORE_RUNTIME_QUALIFIER=
 uv run grid-local-api --port 8000
 ```
 
@@ -647,7 +672,7 @@ set -a
 source ../../.env
 set +a
 export AGENTCORE_RUNTIME_ARN=$(jq -r '.targets.default.resources.runtimes.GridAgentCore.runtimeArn' ../../agentcore/.cli/deployed-state.json)
-export AGENTCORE_RUNTIME_QUALIFIER=DEFAULT
+export AGENTCORE_RUNTIME_QUALIFIER=
 uv run grid-local-api --port 8000
 ```
 
@@ -665,9 +690,9 @@ credentials.
 - **Runtime ARN** - the AWS identifier for the deployed runtime. The local proxy
   reads it from `AGENTCORE_RUNTIME_ARN` so it knows which deployed agent to
   invoke.
-- **Qualifier** - the deployed runtime version/alias to invoke. This project
-  uses `AGENTCORE_RUNTIME_QUALIFIER=DEFAULT` unless a different AgentCore
-  qualifier is created.
+- **Qualifier** - an optional deployed runtime endpoint/alias to invoke. Leave
+  `AGENTCORE_RUNTIME_QUALIFIER` blank for the base runtime ARN unless AgentCore
+  shows a named endpoint/alias you explicitly want to target.
 - **boto3** - the official AWS SDK for Python. `grid-local-api` uses boto3 to
   call `bedrock-agentcore.invoke_agent_runtime` from your local machine.
 - **FastAPI proxy / local API** - the local Python server started by
@@ -754,6 +779,36 @@ For a browser app hosted somewhere other than `127.0.0.1:5173` or
 `localhost:5173`, add that origin to the CORS allow list in
 `grid_agent_core/local_api.py`.
 
+### Troubleshoot A Blank Run
+
+If clicking **Run** appears to do nothing:
+
+1. Confirm the local proxy is alive:
+
+   ```bash
+   curl http://127.0.0.1:8000/api/health
+   ```
+
+2. Restart `grid-local-api` after code or `.env` changes. The browser page can
+   stay open, but the Python process must be restarted to pick up a new
+   `AGENTCORE_RUNTIME_ARN`, AWS credentials, or proxy code.
+3. Check the first streamed line:
+
+   ```bash
+   curl -N -X POST http://127.0.0.1:8000/api/grid/run \
+     -H 'Content-Type: application/json' \
+     -d '{"prompt":"Quick smoke test.","methods":["find"],"enable_subagents":false,"allow_sdk_file_tools":false}' \
+     | head -n 3
+   ```
+
+   With deployed forwarding enabled, the first line should be an `agentcore`
+   trace saying the request is being forwarded to AWS. The following model/tool
+   events may still take 60-120 seconds.
+4. If the final event has `status: "error"`, read the error in the Live,
+   Answer, or Retrieval Map tab. Common causes are missing AWS credentials,
+   wrong `AGENTCORE_RUNTIME_ARN`, wrong region, or a runtime import/configuration
+   failure.
+
 ## Test Console (single page, no build)
 
 `grid-local-api` also serves a self-contained test console — a single static page at `app/GridAgentCore/test_ui/index.html`. No `npm` build is required: just start the API and open the page.
@@ -808,7 +863,22 @@ Runtime:
 - `GRID_S3_BUCKET`
 - `GRID_S3_PREFIX`
 - `VOYAGE_API_KEY` - required at runtime for the current Voyage-backed vector index; `scripts/deploy_grid_agentcore.py` stores it in Secrets Manager and writes a dynamic reference to `agentcore/agentcore.json`.
-- `AGENTCORE_RUNTIME_ARN` and `AGENTCORE_RUNTIME_QUALIFIER` for optional local API forwarding.
+
+Local proxy/frontend forwarding:
+
+- `AGENTCORE_RUNTIME_ARN` - optional local-only setting. When set,
+  `grid-local-api` forwards `/api/grid/run` to this deployed AgentCore runtime.
+  When unset, `grid-local-api` runs the Grid agent locally.
+- `AGENTCORE_RUNTIME_QUALIFIER` - optional local-only setting for an AgentCore
+  runtime endpoint/alias. Leave blank for the base runtime ARN. Do not set this
+  to `DEFAULT` unless `DEFAULT` exists as an AgentCore runtime endpoint for the
+  deployed runtime.
+- `AWS_PROFILE` or `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` /
+  `AWS_SESSION_TOKEN` - local credentials used by boto3 and the AWS CLI. The
+  local proxy needs permission for `bedrock-agentcore:InvokeAgentRuntime`.
+
+Do not expose local AWS credentials to browser JavaScript. Keep them in `.env`,
+your shell, or an AWS profile used only by the local API process.
 
 Vector/PageIndex index-time:
 
