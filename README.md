@@ -40,12 +40,7 @@ Deploy and invoke:
 ```bash
 cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
 
-python3 -m json.tool agentcore/agentcore.json >/dev/null
-python3 -m json.tool agentcore/aws-targets.json >/dev/null
-agentcore validate
-agentcore deploy --dry-run
-agentcore deploy -y
-agentcore status
+python3 scripts/deploy_grid_agentcore.py
 
 agentcore invoke \
   --runtime GridAgentCore \
@@ -53,7 +48,12 @@ agentcore invoke \
   --prompt "Summarize Gate 2 evidence requirements with citations."
 ```
 
-The installed AgentCore CLI in this workspace exposes `agentcore deploy --dry-run`. Some AWS docs and CLI versions use `--plan` for preview, so check `agentcore deploy --help` if your CLI differs.
+The deploy script reads `.env`, verifies local and S3 artifacts, stores
+`VOYAGE_API_KEY` in AWS Secrets Manager, updates `agentcore/agentcore.json` with
+runtime-safe env vars, runs AgentCore validation and dry-run, deploys, then
+attaches S3 read access to the runtime role. Use
+`python3 scripts/deploy_grid_agentcore.py --dry-run-only` to check everything
+without deploying.
 
 ## What The System Does
 
@@ -84,6 +84,7 @@ Runtime model calls use Amazon Bedrock through IAM. Parse-time VLM enrichment, V
 - `app/GridAgentCore/grid_agent_core/upload_artifacts.py` - S3 artifact upload CLI.
 - `app/GridAgentCore/grid_agent_core/local_api.py` - FastAPI NDJSON proxy for frontend and deployed runtime.
 - `app/GridAgentCore/frontend/` - Vite React Grid QA UI.
+- `scripts/deploy_grid_agentcore.py` - deployment helper for GridAgentCore runtime config, secret setup, deploy, and S3 role policy.
 - `agentcore/agentcore.json` - active AgentCore deployment target for `GridAgentCore`.
 - `agentcore/aws-targets.json` - AWS account/region deployment target.
 - `app/SimpleAgentCore/` - preserved minimal chatbot baseline.
@@ -415,17 +416,38 @@ aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/graphrag_data/graph_index/graphr
 
 ## Deploy To AgentCore Runtime
 
-Before deploying, edit `agentcore/agentcore.json` so runtime env vars match `.env`:
+Use the deployment helper as the primary path:
 
-- `AWS_REGION`
-- `ANTHROPIC_MODEL`
-- `GRID_S3_BUCKET`
-- `GRID_S3_PREFIX`
-- `GRID_ARTIFACT_DIR=/tmp/grid-agent-core/artifacts`
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+python3 scripts/deploy_grid_agentcore.py
+```
 
-Also verify `agentcore/aws-targets.json` uses the AWS account and region where the selected Bedrock Claude model is available.
+The script performs the deploy preflight and runtime wiring:
 
-Deploy:
+- Reads `.env` and requires `AWS_REGION`, AWS credentials, `ANTHROPIC_MODEL`, `GRID_S3_BUCKET`, `GRID_S3_PREFIX`, and `VOYAGE_API_KEY`.
+- Verifies local parsed artifacts and vector/PageIndex indexes under `.grid_artifacts/`.
+- Creates or updates the Secrets Manager secret `grid-agent-core/voyage-api-key`.
+- Updates `agentcore/agentcore.json` so runtime env vars match `.env`.
+- Sets `GRID_ARTIFACT_DIR=/tmp/grid-agent-core/artifacts` for the remote AgentCore Linux runtime.
+- Sets `VOYAGE_API_KEY={{resolve:secretsmanager:grid-agent-core/voyage-api-key}}` so the plaintext key is not written to the repo.
+- Verifies required objects exist under `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX`.
+- Runs `agentcore validate`, `agentcore deploy --dry-run`, `agentcore deploy -y`, and `agentcore status`.
+- Attaches `s3:ListBucket` and `s3:GetObject` access for the artifact prefix to the deployed GridAgentCore runtime role.
+- Prints the frontend commands for testing the deployed runtime through the local API proxy.
+
+To run the same checks without deploying:
+
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+python3 scripts/deploy_grid_agentcore.py --dry-run-only
+```
+
+The installed AgentCore CLI in this workspace exposes `agentcore deploy --dry-run`.
+Some AWS docs and CLI versions use `--plan` for preview, so check
+`agentcore deploy --help` if your CLI differs.
+
+Manual preflight, if you want to inspect the same inputs:
 
 ```bash
 cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
@@ -438,14 +460,50 @@ python3 -m json.tool agentcore/agentcore.json >/dev/null
 python3 -m json.tool agentcore/aws-targets.json >/dev/null
 agentcore validate
 agentcore deploy --dry-run
-agentcore deploy -y
-agentcore status
 ```
+
+Also verify `agentcore/aws-targets.json` uses the AWS account and region where the selected Bedrock Claude model is available.
 
 If CDK has not been bootstrapped in the target account/region:
 
 ```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+set -a
+source .env
+set +a
+
 npx cdk bootstrap "aws://$(aws sts get-caller-identity --query Account --output text)/$AWS_REGION"
+```
+
+After deployment, the script attaches the runtime S3 read policy automatically. If you deploy manually, attach the equivalent policy yourself:
+
+```bash
+ROLE_ARN=$(jq -r '.targets.default.resources.runtimes.GridAgentCore.roleArn' agentcore/.cli/deployed-state.json)
+ROLE_NAME="${ROLE_ARN##*/}"
+
+cat > /tmp/grid-agent-artifacts-read-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::$GRID_S3_BUCKET",
+      "Condition": {"StringLike": {"s3:prefix": ["$GRID_S3_PREFIX", "$GRID_S3_PREFIX/*"]}}
+    },
+    {
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::$GRID_S3_BUCKET/$GRID_S3_PREFIX/*"
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy \
+  --role-name "$ROLE_NAME" \
+  --policy-name GridAgentArtifactsRead \
+  --policy-document file:///tmp/grid-agent-artifacts-read-policy.json
 ```
 
 ## Invoke And Test Deployed Runtime
@@ -601,9 +659,10 @@ Runtime:
 - `AWS_REGION`
 - `CLAUDE_CODE_USE_BEDROCK=1`
 - `ANTHROPIC_MODEL`
-- `GRID_ARTIFACT_DIR`
+- `GRID_ARTIFACT_DIR` - local path for local runs; `/tmp/grid-agent-core/artifacts` in deployed AgentCore Runtime.
 - `GRID_S3_BUCKET`
 - `GRID_S3_PREFIX`
+- `VOYAGE_API_KEY` - required at runtime for the current Voyage-backed vector index; `scripts/deploy_grid_agentcore.py` stores it in Secrets Manager and writes a dynamic reference to `agentcore/agentcore.json`.
 - `AGENTCORE_RUNTIME_ARN` and `AGENTCORE_RUNTIME_QUALIFIER` for optional local API forwarding.
 
 Vector/PageIndex index-time:
@@ -665,6 +724,7 @@ Runtime execution role:
 - Bedrock invoke permissions for the configured model.
 - `s3:ListBucket` on the artifact bucket with the configured prefix condition.
 - `s3:GetObject` on `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/*`.
+- Secrets Manager dynamic reference resolution for the deployed `VOYAGE_API_KEY` value is handled by CloudFormation during deployment.
 
 ## Verification
 

@@ -4,7 +4,7 @@
   "version": 1,
   "managedBy": "CDK",
   "tags": {
-    "agentcore:created-by": "codex",
+    "agentcore:created-by": "MaoXun",
     "agentcore:project-name": "GridAgentCore"
   },
   "runtimes": [
@@ -22,7 +22,7 @@
       "envVars": [
         {
           "name": "AWS_REGION",
-          "value": "us-west-2"
+          "value": "us-east-1"
         },
         {
           "name": "CLAUDE_CODE_USE_BEDROCK",
@@ -38,11 +38,15 @@
         },
         {
           "name": "GRID_S3_BUCKET",
-          "value": "replace-with-grid-agent-artifact-bucket"
+          "value": "maoxun-grid-agent-artifacts-us-east-1"
         },
         {
           "name": "GRID_S3_PREFIX",
           "value": "grid-agent-core"
+        },
+        {
+          "name": "VOYAGE_API_KEY",
+          "value": "{{resolve:secretsmanager:grid-agent-core/voyage-api-key}}"
         }
       ]
     }
