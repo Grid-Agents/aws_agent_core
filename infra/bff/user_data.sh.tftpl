@@ -1,0 +1,70 @@
+#!/bin/bash
+# Grid BFF proxy bootstrap. Logs to /var/log/grid-bff-bootstrap.log
+set -xeuo pipefail
+exec > /var/log/grid-bff-bootstrap.log 2>&1
+
+echo "=== grid-bff bootstrap start: $(date -u) ==="
+
+# 1) base packages
+dnf install -y tar gzip unzip findutils
+
+# 2) AWS CLI v2 (used only to pull the code tarball with the instance role)
+if ! command -v aws >/dev/null 2>&1; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+fi
+
+# 3) uv (manages Python + deps) into /usr/local/bin
+export UV_INSTALL_DIR=/usr/local/bin
+curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh
+export PATH="/usr/local/bin:$PATH"
+
+# 4) fetch + unpack the app code (extracts to /opt/grid-bff/GridAgentCore)
+mkdir -p /opt/grid-bff
+aws s3 cp "${code_s3_uri}" /tmp/grid-bff.tar.gz --region "${region}"
+tar -xzf /tmp/grid-bff.tar.gz -C /opt/grid-bff
+APP_DIR=/opt/grid-bff/GridAgentCore
+
+# 5) runtime env (NO secrets: AWS creds come from the instance role; proxy mode forwards to AgentCore)
+cat > /opt/grid-bff/bff.env <<EOF
+AWS_REGION=${region}
+AWS_DEFAULT_REGION=${region}
+CLAUDE_CODE_USE_BEDROCK=1
+ANTHROPIC_MODEL=${model}
+AGENTCORE_RUNTIME_ARN=${runtime_arn}
+AGENTCORE_RUNTIME_QUALIFIER=
+GRID_S3_BUCKET=${s3_bucket}
+GRID_S3_PREFIX=${s3_prefix}
+GRID_ARTIFACT_DIR=/opt/grid-bff/artifacts
+GRID_LOCAL_API_PORT=8000
+EOF
+mkdir -p /opt/grid-bff/artifacts
+
+# 6) install deps (build extra gives fastapi/uvicorn; graphrag/torch NOT needed for the proxy)
+cd "$APP_DIR"
+/usr/local/bin/uv sync --extra build
+
+# 7) systemd service
+cat > /etc/systemd/system/grid-bff.service <<EOF
+[Unit]
+Description=Grid AgentCore BFF proxy (grid-local-api)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$APP_DIR
+EnvironmentFile=/opt/grid-bff/bff.env
+ExecStart=/usr/local/bin/uv run grid-local-api --host ${bind_address} --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now grid-bff.service
+
+echo "=== grid-bff bootstrap done: $(date -u) ==="

@@ -1,0 +1,9 @@
+# Terraform state (can contain sensitive values) — never commit
+*.tfstate
+*.tfstate.*
+# Saved plans
+tfplan
+# Provider binaries / local cache
+.terraform/
+# Build artifact uploaded to S3 (regenerated on apply)
+dist/
