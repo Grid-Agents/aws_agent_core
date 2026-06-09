@@ -6,6 +6,7 @@ const TOOL_LABELS = {
   vector: "Vector",
   pageindex: "PageIndex",
   graphrag: "GraphRAG",
+  colivara: "Visual (ColiVara)",
   find: "Exact find",
 };
 

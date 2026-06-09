@@ -33,6 +33,7 @@ describe("Grid Agents UI", () => {
               { id: "vector", ready: true },
               { id: "pageindex", ready: true },
               { id: "graphrag", ready: false },
+              { id: "colivara", ready: true },
               { id: "find", ready: true },
             ],
           }),
