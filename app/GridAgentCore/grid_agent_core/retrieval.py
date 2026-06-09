@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .colivara import load_colivara_hits
 from .corpus import document_text, load_manifest, page_for_offset
 from .indexes import SearchHit, load_graphrag_hits, load_pageindex_hits, load_vector_hits, tokenize
 from .models import DocumentRecord, Evidence, FigureRecord
@@ -41,6 +42,8 @@ class GridRetrievalRepository:
             hits = self._find_hits(query, top_k=top_k)
         elif method == "graphrag":
             hits = load_graphrag_hits(self.artifact_dir, query, top_k=top_k)
+        elif method == "colivara":
+            hits = load_colivara_hits(self.artifact_dir, query, top_k=top_k)
         else:
             raise ValueError(f"Unsupported retrieval method: {method}")
         evidence = [self._evidence(index, hit) for index, hit in enumerate(hits, start=1)]
@@ -59,6 +62,14 @@ class GridRetrievalRepository:
             text = doc_text[hit.start_char : hit.end_char]
         page = page_for_offset(record, hit.start_char)
         figures = self._figures_for_hit(record, hit.start_char, hit.end_char, page)
+        metadata = dict(hit.metadata)
+        figure_payloads = [self._figure_payload(figure) for figure in figures]
+        if figure_payloads:
+            existing_figures = metadata.get("figures")
+            if isinstance(existing_figures, list):
+                metadata["figures"] = [*existing_figures, *figure_payloads]
+            else:
+                metadata["figures"] = figure_payloads
         return Evidence(
             id=f"E{index}",
             document_id=hit.document_id,
@@ -72,11 +83,7 @@ class GridRetrievalRepository:
             artifact_source=hit.source,
             start_char=hit.start_char,
             end_char=hit.end_char,
-            metadata={
-                "figures": [self._figure_payload(figure) for figure in figures],
-            }
-            if figures
-            else {},
+            metadata=metadata,
         )
 
     def _figures_for_hit(

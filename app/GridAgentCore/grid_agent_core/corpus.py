@@ -19,6 +19,11 @@ from .settings import DEFAULT_ARTIFACT_DIR, grid_docs_dir
 if TYPE_CHECKING:
     from .llama_parse_agentic import LlamaParseResult
 
+try:
+    from pypdf import PdfReader as PdfReader
+except ModuleNotFoundError:  # pragma: no cover - optional parse-time dependency
+    PdfReader = None
+
 _NON_ID = re.compile(r"[^a-z0-9]+")
 PARSER_PYPDF = "pypdf"
 PARSER_LLAMAPARSE_AGENTIC = "llamaparse_agentic"
@@ -35,6 +40,24 @@ DEFAULT_VLM_CONCURRENCY = 4
 FULL_GRID_CODE_FILENAME = "00_The_Full_Grid_Code.pdf"
 DEFAULT_SMOKE_PAGE_RANGE = (1, 8)
 DEFAULT_SMOKE_ARTIFACT_DIR = DEFAULT_ARTIFACT_DIR.parent / ".grid_smoke_artifacts"
+
+
+def parse_pdf_agentic(*args, **kwargs):
+    from .llama_parse_agentic import parse_pdf_agentic as _parse_pdf_agentic
+
+    return _parse_pdf_agentic(*args, **kwargs)
+
+
+def enrich_page_markdown_with_visuals(*args, **kwargs):
+    from .multimodal_enrichment import enrich_page_markdown_with_visuals as _enrich
+
+    return _enrich(*args, **kwargs)
+
+
+def visual_artifacts_to_figures(*args, **kwargs):
+    from .multimodal_enrichment import visual_artifacts_to_figures as _to_figures
+
+    return _to_figures(*args, **kwargs)
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -96,7 +119,8 @@ def _page_range_label(page_range: tuple[int, int] | None) -> str | None:
 
 
 def extract_pdf(path: Path) -> tuple[str, list[PageRecord]]:
-    from pypdf import PdfReader
+    if PdfReader is None:
+        raise RuntimeError("pypdf is required for parser='pypdf'. Install the build extras.")
 
     reader = PdfReader(str(path))
     page_texts: list[tuple[int, str]] = []
@@ -121,8 +145,6 @@ def extract_pdf_with_llamaparse_agentic(
     cancel_event: threading.Event | None = None,
     vlm_limiter: threading.Semaphore | None = None,
 ) -> tuple[str, list[PageRecord], list[FigureRecord], dict[str, object]]:
-    from .llama_parse_agentic import parse_pdf_agentic
-
     parsed = parse_pdf_agentic(
         path,
         show_progress=show_progress,
@@ -156,11 +178,6 @@ def _llamaparse_result_to_corpus(
     cancel_event: threading.Event | None = None,
     vlm_limiter: threading.Semaphore | None = None,
 ) -> tuple[str, list[PageRecord], list[FigureRecord], dict[str, object]]:
-    from .multimodal_enrichment import (
-        enrich_page_markdown_with_visuals,
-        visual_artifacts_to_figures,
-    )
-
     page_markdown = [(page.page, page.markdown) for page in parsed.pages]
     visual_artifacts = []
     if multimodal_enrich:
@@ -251,9 +268,9 @@ def _write_source_document_metadata(source_dir: Path, artifact_dir: Path, pdf_pa
 
 
 def _pdf_page_count(path: Path) -> int | None:
+    if PdfReader is None:
+        return None
     try:
-        from pypdf import PdfReader
-
         return len(PdfReader(str(path)).pages)
     except Exception:
         return None

@@ -10,7 +10,7 @@ import re
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +42,7 @@ class SearchHit:
     score: float
     source: str
     section: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def tokenize(text: str) -> list[str]:
@@ -622,6 +623,16 @@ def build_all(
             rebuild=rebuild_graphrag,
             show_progress=show_progress,
         )
+    if "colivara" in selected:
+        from .colivara import build_colivara_index
+
+        print("Syncing Grid PDFs to ColiVara visual retrieval...")
+        build_colivara_index(
+            artifact_dir,
+            resume=resume,
+            rebuild=rebuild_indexes,
+            show_progress=show_progress,
+        )
     print(f"Grid index build finished in {time.time() - start:.1f}s")
 
 
@@ -703,7 +714,7 @@ def main() -> None:
         rebuild_indexes = True
         print("Treating --force as --rebuild-indexes during indexing.")
     methods = []
-    valid_methods = {"vector", "pageindex", "graphrag"}
+    valid_methods = {"vector", "pageindex", "graphrag", "colivara"}
     for item in args.methods.split(","):
         method = item.strip()
         if not method:

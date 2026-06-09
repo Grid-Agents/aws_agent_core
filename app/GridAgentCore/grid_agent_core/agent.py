@@ -82,6 +82,10 @@ def _search_tool_description(method: str) -> str:
         "vector": "Semantic chunk retrieval over Grid text; evidence may include optional figure metadata.",
         "pageindex": "PageIndex tree retrieval over Grid text; evidence may include optional figure metadata.",
         "graphrag": "GraphRAG retrieval over Grid entity/text-unit artifacts; evidence may include optional figure metadata.",
+        "colivara": (
+            "ColiVara visual page retrieval over Grid PDFs using multi-vector late interaction; "
+            "evidence may include full-page image blocks."
+        ),
         "find": "Exact keyword and phrase search across Grid text; evidence may include optional figure metadata.",
     }[method]
 
@@ -106,7 +110,7 @@ def _system_prompt(methods: list[str], allow_sdk_file_tools: bool, enable_subage
         f"Enabled retrieval tools: {', '.join(methods)}. {subagent_note} {file_note}\n\n"
         "Before finalizing, call cite_evidence with the evidence IDs that directly "
         "support the answer. If evidence includes attached figure image blocks, use "
-        "those images only when they materially clarify a chart, diagram, or figure, "
+        "those images only when they materially clarify a chart, diagram, figure, or page layout, "
         "and cite the same evidence ID. Do not expose hidden chain-of-thought; "
         "observable tool calls and concise rationale are enough."
     )

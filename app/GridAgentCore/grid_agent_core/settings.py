@@ -10,7 +10,7 @@ DEFAULT_GRID_DOCS_DIR = Path("/Users/maoxunhuang/Desktop/GridAgents/Grid Docs")
 DEFAULT_ARTIFACT_DIR = PROJECT_ROOT / ".grid_artifacts"
 DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 DEFAULT_BATCH_MODEL = "claude-3-5-haiku-20241022"
-RETRIEVAL_METHODS = ("vector", "pageindex", "graphrag", "find")
+RETRIEVAL_METHODS = ("vector", "pageindex", "graphrag", "colivara", "find")
 DEFAULT_RETRIEVAL_METHODS = ("vector", "pageindex", "find")
 SUBAGENT_NAME = "span-retriever"
 
@@ -41,3 +41,15 @@ def s3_bucket() -> str:
 
 def s3_prefix() -> str:
     return os.getenv("GRID_S3_PREFIX", "grid-agent-core").strip().strip("/")
+
+
+def colivara_api_key() -> str:
+    return os.getenv("COLIVARA_API_KEY", "").strip()
+
+
+def colivara_api_base_url() -> str:
+    return os.getenv("COLIVARA_API_BASE_URL", "https://api.colivara.com").strip()
+
+
+def colivara_collection_name() -> str:
+    return os.getenv("COLIVARA_COLLECTION_NAME", "grid-agent-core").strip()

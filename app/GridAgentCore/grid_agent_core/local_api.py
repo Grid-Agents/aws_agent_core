@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from .agent import run_grid_agent_events
 from .artifacts import artifact_revision, configured_s3_uri, ensure_artifacts, runtime_artifact_dir
 from .corpus import load_manifest
-from .settings import RETRIEVAL_METHODS, model_id, s3_bucket, s3_prefix
+from .settings import RETRIEVAL_METHODS, colivara_api_key, model_id, s3_bucket, s3_prefix
 
 
 load_dotenv()
@@ -165,6 +165,8 @@ async def overview() -> dict[str, Any]:
             "vector": (root / "indexes" / "vector" / "index.json").exists(),
             "pageindex": (root / "indexes" / "pageindex" / "index.json").exists(),
             "graphrag": (root / "graphrag_data" / "graph_index" / "graphrag_ms" / "output").exists(),
+            "colivara": bool(colivara_api_key())
+            and (root / "indexes" / "colivara" / "index.json").exists(),
             "find": True,
         }
         return {

@@ -10,7 +10,7 @@
     --ink:#0a0a0a; --ink-2:#2b2b2b; --mut:#595959; --mut-2:#767676;
     --line:#d9d9d9; --line-2:#ebebeb; --bg:#ffffff; --bg-2:#f6f6f6; --bg-3:#efefef;
     --active:#111827;
-    --vector:#1f6feb; --pageindex:#0f7b6c; --find:#9a6700; --graphrag:#6f42c1;
+    --vector:#1f6feb; --pageindex:#0f7b6c; --find:#9a6700; --graphrag:#6f42c1; --colivara:#bf3989;
     --sans:-apple-system,system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
@@ -249,6 +249,7 @@
         <label class="mtog on" style="--m:var(--vector)"><input type="checkbox" value="vector" checked><span class="dot"></span>vector</label>
         <label class="mtog on" style="--m:var(--pageindex)"><input type="checkbox" value="pageindex" checked><span class="dot"></span>pageindex</label>
         <label class="mtog" style="--m:var(--graphrag)"><input type="checkbox" value="graphrag"><span class="dot"></span>graphrag</label>
+        <label class="mtog" style="--m:var(--colivara)"><input type="checkbox" value="colivara"><span class="dot"></span>colivara</label>
         <label class="mtog on" style="--m:var(--find)"><input type="checkbox" value="find" checked><span class="dot"></span>find</label>
       </div>
       <div class="toggles">
@@ -304,7 +305,7 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const el = (t,c,html)=>{const e=document.createElement(t); if(c)e.className=c; if(html!=null)e.innerHTML=html; return e;};
 const esc = s => String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
-const METHOD_COLORS = {vector:"var(--vector)",pageindex:"var(--pageindex)",find:"var(--find)",graphrag:"var(--graphrag)"};
+const METHOD_COLORS = {vector:"var(--vector)",pageindex:"var(--pageindex)",find:"var(--find)",graphrag:"var(--graphrag)",colivara:"var(--colivara)"};
 const shortDoc = id => String(id).replace(/^grid\//,"").replace(/\.txt$/,"");
 
 // ---- tabs ----
@@ -412,11 +413,11 @@ function renderMap(r){
   const inner=el("div"); inner.id="map-inner"; host.append(inner);
   drawMap();
 }
-// segmented control: All methods · vector · pageindex · find (only methods present in this run)
+// segmented control: All methods plus only methods present in this run
 function buildMapFilter(r){
   const ev=r.evidence||[];
   const byMethod={}; ev.forEach(e=>byMethod[e.artifact_source]=(byMethod[e.artifact_source]||0)+1);
-  const order=["vector","pageindex","find","graphrag"].filter(m=>byMethod[m]);
+  const order=["vector","pageindex","graphrag","colivara","find"].filter(m=>byMethod[m]);
   const wrap=el("div","mfilter");
   wrap.append(el("span","mlbl","View by method"));
   const segs=[{k:"all",label:"All methods",n:ev.length,col:null},...order.map(m=>({k:m,label:m,n:byMethod[m],col:METHOD_COLORS[m]}))];
@@ -441,7 +442,7 @@ function drawMap(){
   const citedBy={}; cites.forEach(c=>citedBy[c.artifact_source]=(citedBy[c.artifact_source]||0)+1);
   const docsAll={}; ev.forEach(e=>(docsAll[e.title]=docsAll[e.title]||[]).push(e));
   const figCount=ev.reduce((a,e)=>a+(((e.metadata||{}).figures||[]).length),0);
-  const order=["vector","pageindex","find","graphrag"].filter(m=>byMethod[m]);
+  const order=["vector","pageindex","graphrag","colivara","find"].filter(m=>byMethod[m]);
 
   const b=$("#map-inner"); b.innerHTML="";
 
