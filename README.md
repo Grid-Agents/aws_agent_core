@@ -1,6 +1,6 @@
 # Grid AgentCore
 
-AWS Bedrock AgentCore application for asking cited questions over Grid documents. The repo keeps the completed `app/SimpleAgentCore/` chatbot baseline and adds `app/GridAgentCore/` for parsed Grid artifacts, vector/PageIndex/GraphRAG retrieval, Claude Agent SDK tools/subagents, S3 artifact deployment, and a React trajectory UI.
+AWS Bedrock AgentCore application for asking cited questions over Grid documents. The repo keeps the completed `app/SimpleAgentCore/` chatbot baseline and adds `app/GridAgentCore/` for parsed Grid artifacts, vector/PageIndex/GraphRAG/ColiVara retrieval, Claude Agent SDK tools/subagents, S3 artifact deployment, and a React trajectory UI.
 
 The app exposes observable agent events: root-agent text, tool calls, retrieval results, subagent calls, selected citations, latency, metadata, and errors. It does not expose hidden model chain-of-thought.
 
@@ -24,6 +24,12 @@ uv run grid-build-indexes \
   --vector-provider voyage \
   --chunk-strategy semantic \
   --search-strategy hybrid
+
+# Optional visual retrieval sync. This uploads PDFs to ColiVara and writes
+# local metadata under .grid_artifacts/indexes/colivara/.
+uv run grid-build-indexes \
+  --artifact-dir ../../.grid_artifacts \
+  --methods colivara
 ```
 
 Upload the parsed corpus, figures, and indexes:
@@ -49,9 +55,9 @@ agentcore invoke \
 ```
 
 The deploy script reads `.env`, verifies local and S3 artifacts, stores
-`VOYAGE_API_KEY` in AWS Secrets Manager, updates `agentcore/agentcore.json` with
-runtime-safe env vars, runs AgentCore validation and dry-run, deploys, then
-attaches S3 read access to the runtime role. Use
+`VOYAGE_API_KEY` and `COLIVARA_API_KEY` in AWS Secrets Manager, updates
+`agentcore/agentcore.json` with runtime-safe env vars, runs AgentCore validation
+and dry-run, deploys, then attaches S3 read access to the runtime role. Use
 `python3 scripts/deploy_grid_agentcore.py --dry-run-only` to check everything
 without deploying.
 
@@ -62,7 +68,7 @@ User / Web UI / CLI
   -> local API or AWS Bedrock AgentCore Runtime
   -> app/GridAgentCore/main.py
   -> Claude Agent SDK root agent and optional span-retriever subagent
-  -> vector, PageIndex, GraphRAG, and exact-find retrieval tools
+  -> vector, PageIndex, GraphRAG, ColiVara visual, and exact-find retrieval tools
   -> parsed Grid corpus, raw PDFs, figure crops, and index artifacts
   -> Claude Sonnet on Amazon Bedrock
   -> cited answer plus observable trajectory
@@ -77,7 +83,8 @@ Runtime model calls use Amazon Bedrock through IAM. Parse-time VLM enrichment, V
 - `app/GridAgentCore/grid_agent_core/corpus.py` - Grid PDF parsing, text corpus, manifest, page offsets, content hashes.
 - `app/GridAgentCore/grid_agent_core/llama_parse_agentic.py` - LlamaParse Agentic parser wrapper.
 - `app/GridAgentCore/grid_agent_core/multimodal_enrichment.py` - figure-crop detection, VLM descriptions, and figure artifacts.
-- `app/GridAgentCore/grid_agent_core/indexes.py` - vector, official PageIndex, and GraphRAG index builders.
+- `app/GridAgentCore/grid_agent_core/indexes.py` - vector, official PageIndex, GraphRAG, and ColiVara sync entrypoints.
+- `app/GridAgentCore/grid_agent_core/colivara.py` - ColiVara REST client, PDF sync metadata, and visual page search mapping.
 - `app/GridAgentCore/grid_agent_core/rag_compat/` - vendored compatibility layer for sibling vector retrieval plus the official PageIndex adapter.
 - `app/GridAgentCore/grid_agent_core/graphrag/` - rlm-eval-style GraphRAG worker protocol, canonical chunks, metadata, and worker.
 - `app/GridAgentCore/grid_agent_core/retrieval.py` - retrieval repository and figure attachment logic.
@@ -127,6 +134,9 @@ GRID_MULTIMODAL_ENRICH=1
 LLAMA_CLOUD_API_KEY=your-llamaparse-key
 ANTHROPIC_API_KEY=your-anthropic-key-for-vlm-and-graphrag
 VOYAGE_API_KEY=your-voyage-key-for-vector-and-graphrag
+COLIVARA_API_KEY=your-colivara-key-for-visual-retrieval
+COLIVARA_COLLECTION_NAME=grid-agent-core
+COLIVARA_API_BASE_URL=https://api.colivara.com
 ```
 
 After the AgentCore runtime is deployed, add the deployed runtime connection for
@@ -314,6 +324,42 @@ uv run grid-build-indexes \
 
 GraphRAG is slower and more dependency-heavy than vector/PageIndex. It requires `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY` for the local worker. The current runtime GraphRAG retrieval path also invokes the worker at query time, so only enable the `graphrag` retrieval method in AgentCore after the deployed package and runtime environment include GraphRAG dependencies and required API keys. For the fastest MVP, deploy `vector,pageindex,find` first.
 
+### ColiVara Visual Retrieval
+
+The `colivara` method uses ColiVara's hosted visual retrieval API. ColiVara
+converts each PDF page into a visual embedding and searches pages with a
+multi-vector late-interaction retriever. This complements the text-first
+indexes when layout, charts, diagrams, or scanned visual cues matter.
+
+Sync Grid PDFs to a ColiVara collection:
+
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore
+set -a
+source ../../.env
+set +a
+
+uv run grid-build-indexes \
+  --artifact-dir ../../.grid_artifacts \
+  --methods colivara
+```
+
+The sync step:
+
+- reads `manifest.jsonl`;
+- uploads each raw PDF from `.grid_artifacts/raw/` to `COLIVARA_COLLECTION_NAME`;
+- sends document metadata such as `grid_document_id`, title, category, filename,
+  source path, and content hashes;
+- writes `.grid_artifacts/indexes/colivara/index.json` so runtime search can map
+  ColiVara page hits back to local Grid evidence.
+
+At query time, `colivara_search` calls ColiVara `/v1/search/`, receives
+page-level results with scores and base64 page images, saves returned page
+images under `colivara_results/`, attaches the page image to the Claude Agent
+SDK tool result, and includes parsed page text when the page exists in the local
+corpus. The actual visual embeddings stay in ColiVara; S3 artifact upload only
+stores the local sync metadata and any local query-result images.
+
 ### One Command For All Indexes
 
 ```bash
@@ -321,7 +367,7 @@ uv sync --extra build --extra dev --extra graphrag
 
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \
-  --methods vector,pageindex,graphrag \
+  --methods vector,pageindex,graphrag,colivara \
   --vector-provider voyage \
   --chunk-strategy semantic \
   --search-strategy hybrid
@@ -345,9 +391,10 @@ test -f ../../.grid_artifacts/indexes/vector/config.json
 test -f ../../.grid_artifacts/indexes/pageindex/index.json
 test -f ../../.grid_artifacts/indexes/pageindex/config.json
 test -d ../../.grid_artifacts/graphrag_data/graph_index/graphrag_ms/output
+test -f ../../.grid_artifacts/indexes/colivara/index.json
 ```
 
-For a first deployed MVP, vector and PageIndex are enough. Add GraphRAG after the output directory exists and runtime dependencies are configured.
+For a first deployed MVP, vector and PageIndex are enough. Add GraphRAG after the output directory exists and runtime dependencies are configured. Add ColiVara after the collection sync succeeds and `COLIVARA_API_KEY` is available to the local or deployed runtime.
 
 ## Figure And Image Workflow
 
@@ -420,7 +467,7 @@ uv run grid-upload-artifacts \
   --prefix "$GRID_S3_PREFIX"
 ```
 
-The upload includes raw PDFs, source metadata, manifest, artifact revision, parse metadata, corpus text, figure images, and index directories. It intentionally skips `parse_resume_cache/` and legacy `parse/` caches.
+The upload includes raw PDFs, source metadata, manifest, artifact revision, parse metadata, corpus text, figure images, ColiVara sync metadata, and index directories. It intentionally skips `parse_resume_cache/` and legacy `parse/` caches.
 
 Verify:
 
@@ -428,6 +475,7 @@ Verify:
 aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/manifest.jsonl"
 aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/vector/index.json"
 aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/pageindex/index.json"
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/colivara/index.json"
 aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/figures/" --recursive | head
 ```
 
@@ -448,12 +496,12 @@ python3 scripts/deploy_grid_agentcore.py
 
 The script performs the deploy preflight and runtime wiring:
 
-- Reads `.env` and requires `AWS_REGION`, AWS credentials, `ANTHROPIC_MODEL`, `GRID_S3_BUCKET`, `GRID_S3_PREFIX`, and `VOYAGE_API_KEY`.
+- Reads `.env` and requires `AWS_REGION`, AWS credentials, `ANTHROPIC_MODEL`, `GRID_S3_BUCKET`, `GRID_S3_PREFIX`, `VOYAGE_API_KEY`, and `COLIVARA_API_KEY`.
 - Verifies local parsed artifacts and vector/PageIndex indexes under `.grid_artifacts/`.
-- Creates or updates the Secrets Manager secret `grid-agent-core/voyage-api-key`.
+- Creates or updates the Secrets Manager secrets `grid-agent-core/voyage-api-key` and `grid-agent-core/colivara-api-key`.
 - Updates `agentcore/agentcore.json` so runtime env vars match `.env`.
 - Sets `GRID_ARTIFACT_DIR=/tmp/grid-agent-core/artifacts` for the remote AgentCore Linux runtime.
-- Sets `VOYAGE_API_KEY={{resolve:secretsmanager:grid-agent-core/voyage-api-key}}` so the plaintext key is not written to the repo.
+- Sets `VOYAGE_API_KEY={{resolve:secretsmanager:grid-agent-core/voyage-api-key}}` and `COLIVARA_API_KEY={{resolve:secretsmanager:grid-agent-core/colivara-api-key}}` so plaintext keys are not written to the repo.
 - Verifies required objects exist under `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX`.
 - Runs `agentcore validate`, `agentcore deploy --dry-run`, `agentcore deploy -y`, and `agentcore status`.
 - Attaches `s3:ListBucket` and `s3:GetObject` access for the artifact prefix to the deployed GridAgentCore runtime role.
@@ -552,7 +600,7 @@ import boto3
 
 payload = {
     "prompt": "What does Gate 2 readiness require? Cite sources.",
-    "methods": ["vector", "pageindex", "find"],
+    "methods": ["vector", "pageindex", "colivara", "find"],
     "enable_subagents": True,
     "allow_sdk_file_tools": False,
 }
@@ -603,7 +651,7 @@ Payload shape:
 ```json
 {
   "prompt": "What does Gate 2 readiness require?",
-  "methods": ["vector", "pageindex", "graphrag", "find"],
+  "methods": ["vector", "pageindex", "graphrag", "colivara", "find"],
   "allow_sdk_file_tools": false,
   "enable_subagents": true
 }
@@ -738,7 +786,7 @@ Request body:
 ```json
 {
   "prompt": "What does Gate 2 readiness require?",
-  "methods": ["vector", "pageindex", "find"],
+  "methods": ["vector", "pageindex", "colivara", "find"],
   "allow_sdk_file_tools": false,
   "enable_subagents": true,
   "runtime_session_id": "optional-stable-session-id"
@@ -829,7 +877,7 @@ It streams the same NDJSON events as the React UI, plus:
 - **Run history** — every completed run is auto-saved to S3 under `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/runs/` (full record at `runs/<id>.json`, summary list at `runs/index.json`, capped at 200) and is reloadable from the **Saved runs** dropdown. Because it is S3-backed, history is durable and shared across machines.
 - **View by method** — split the Retrieval Map by retrieval method: see all methods at once, or isolate one of `vector` / `pageindex` / `find`.
 
-`graphrag` is auto-disabled in the method picker unless its index is present. Cited figure crops are served over HTTP from `/artifacts/`.
+`graphrag` and `colivara` are auto-disabled in the method picker unless their indexes/configuration are present. Cited figure crops and local ColiVara page-result images are served over HTTP from `/artifacts/` during local runs.
 
 ## How The Agent Works Internally
 
@@ -847,7 +895,7 @@ It streams the same NDJSON events as the React UI, plus:
 - AgentCore Runtime provides isolated sessions. Preserve `runtimeSessionId` for multi-turn continuity; use a new session ID for independent questions.
 - This MVP uses immutable S3 artifact prefixes. Rebuild indexes into a new prefix for safer production updates, then redeploy or update runtime env vars to point at the new prefix.
 - Runtime artifact download is lazy: the first request downloads artifacts to `/tmp/grid-agent-core/artifacts`. Larger artifacts increase cold-start latency.
-- Keep `networkMode` as `PUBLIC` while the runtime only needs Bedrock and S3 for vector/PageIndex/find.
+- Keep `networkMode` as `PUBLIC` while the runtime only needs Bedrock, S3, and outbound HTTPS to ColiVara for vector/PageIndex/find/ColiVara.
 - Move to VPC only for private dependencies.
 - Move from S3 download-on-start to mounted filesystems/EFS only if artifact size, cold-start time, or concurrent download pressure requires it.
 - Keep runtime IAM read-only for artifacts. Build and upload permissions should stay with local/deployment users, not the runtime role.
@@ -863,6 +911,9 @@ Runtime:
 - `GRID_S3_BUCKET`
 - `GRID_S3_PREFIX`
 - `VOYAGE_API_KEY` - required at runtime for the current Voyage-backed vector index; `scripts/deploy_grid_agentcore.py` stores it in Secrets Manager and writes a dynamic reference to `agentcore/agentcore.json`.
+- `COLIVARA_API_KEY` - required when the `colivara` retrieval method is enabled; the deploy helper stores it in Secrets Manager and writes a dynamic reference to `agentcore/agentcore.json`.
+- `COLIVARA_COLLECTION_NAME` - ColiVara collection containing synced Grid PDFs. Defaults to `grid-agent-core`.
+- `COLIVARA_API_BASE_URL` - ColiVara API base URL. Defaults to `https://api.colivara.com`.
 
 Local proxy/frontend forwarding:
 

@@ -23,7 +23,9 @@ packaged with infrastructure/configuration for AWS AgentCore.
   AgentCore isolation/scaling, invocation, and permissions.
 - The sibling `claude_agent` project is the reference for agentic search,
   vector retrieval, PageIndex retrieval, GraphRAG retrieval, Claude Agent SDK
-  tools, subagents, and trajectory UI behavior. You can copy and adapt the code directly from it.
+  tools, subagents, and trajectory UI behavior. ColiVara adds the hosted visual
+  retrieval path for page-image search. You can copy and adapt useful local code
+  directly from the sibling project when it applies.
 
 ## Interpretation
 
@@ -51,7 +53,7 @@ User
   -> Python app entrypoint
   -> Claude Agent SDK root agent
   -> retrieval tools and Claude Agent SDK enabled tools and subagents
-  -> Grid raw documents and vector/PageIndex/GraphRAG indexes
+  -> Grid raw documents, vector/PageIndex/GraphRAG indexes, and ColiVara visual index
   -> Claude Sonnet on Amazon Bedrock
   -> cited answer plus observable trajectory
 ```
@@ -86,6 +88,7 @@ User
   - vector index
   - official PageIndex index
   - GraphRAG index
+  - ColiVara visual page index, synced through the ColiVara API
 - Vector and PageIndex builds cache per-document parts and skip fresh final
   indexes by artifact revision. Re-run the same command to resume after a
   failure; use `--rebuild-indexes` for final output rebuilds and `--no-resume`
@@ -104,6 +107,7 @@ cd app/GridAgentCore
 uv run grid-parse-documents --parser llamaparse-agentic --force
 uv run grid-build-indexes --methods vector,pageindex
 uv run grid-build-indexes --methods graphrag
+uv run grid-build-indexes --methods colivara
 ```
 
 The `pageindex` method is wired to the sibling
@@ -116,12 +120,20 @@ GraphRAG is built by the local `grid_agent_core.graphrag` Microsoft GraphRAG
 worker copied into this project. It no longer depends on the sibling `rlm-eval`
 project.
 
+ColiVara sync uploads raw PDFs from the parsed artifact manifest into the
+configured `COLIVARA_COLLECTION_NAME`, sends stable Grid document metadata, and
+writes local sync metadata to `indexes/colivara/index.json`. Runtime
+`colivara_search` calls the hosted ColiVara search API and maps page-level
+visual hits back to parsed Grid page text, page images, and citation-ready
+evidence.
+
 ### Agent and Tools
 
 - Adapt the useful retrieval behavior from `claude_agent`:
   - `vector_search`
   - `pageindex_search`
   - `graphrag_search`
+  - `colivara_search`
   - exact keyword/find search
   - Claude Agent SDK retrieval/inspection tools when safely scoped
   - focused subagent support, especially a span/document retrieval subagent
@@ -136,7 +148,7 @@ Agent payload:
 ```json
 {
   "prompt": "Question text",
-  "methods": ["vector", "pageindex", "graphrag", "find"],
+  "methods": ["vector", "pageindex", "graphrag", "colivara", "find"],
   "allow_sdk_file_tools": false,
   "enable_subagents": true
 }

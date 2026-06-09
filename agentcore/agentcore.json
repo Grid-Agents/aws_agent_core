@@ -47,6 +47,18 @@
         {
           "name": "VOYAGE_API_KEY",
           "value": "{{resolve:secretsmanager:grid-agent-core/voyage-api-key}}"
+        },
+        {
+          "name": "COLIVARA_API_KEY",
+          "value": "{{resolve:secretsmanager:grid-agent-core/colivara-api-key}}"
+        },
+        {
+          "name": "COLIVARA_COLLECTION_NAME",
+          "value": "grid-agent-core"
+        },
+        {
+          "name": "COLIVARA_API_BASE_URL",
+          "value": "https://api.colivara.com"
         }
       ]
     }

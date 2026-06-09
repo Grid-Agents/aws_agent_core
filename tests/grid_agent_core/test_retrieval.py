@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import base64
 import sys
 import types
 from types import SimpleNamespace
 
 import numpy as np
 
+from grid_agent_core.colivara import build_colivara_index, load_colivara_hits
 from grid_agent_core.corpus import write_manifest
 from grid_agent_core.indexes import build_pageindex, build_vector_index
 from grid_agent_core.models import DocumentRecord, FigureRecord, PageRecord
@@ -42,6 +44,9 @@ def write_artifact_fixture(tmp_path):
     artifact_dir = tmp_path / "artifacts"
     text_dir = artifact_dir / "corpus" / "grid"
     text_dir.mkdir(parents=True)
+    raw_dir = artifact_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "doc.pdf").write_bytes(b"%PDF-1.4\n")
     text = "[Page 1]\nGate 2 evidence must show land rights and readiness.\n[Page 2]\nQueue management follows the CNDM process.\n"
     text_path = text_dir / "doc.txt"
     text_path.write_text(text, encoding="utf-8")
@@ -82,6 +87,34 @@ def write_artifact_fixture(tmp_path):
     return artifact_dir
 
 
+class FakeColiVaraClient:
+    def __init__(self) -> None:
+        self.upserts = []
+
+    def upsert_document(self, **kwargs):
+        self.upserts.append(kwargs)
+        return {"id": 7, "num_pages": 2}
+
+    def search(self, **kwargs):
+        return {
+            "query": kwargs["query"],
+            "results": [
+                {
+                    "collection_name": kwargs["collection_name"],
+                    "document_name": self.upserts[0]["name"],
+                    "document_metadata": {
+                        "grid_document_id": "grid/doc.txt",
+                        "title": "Gate 2 Criteria",
+                    },
+                    "page_number": 1,
+                    "raw_score": 18.0,
+                    "normalized_score": 0.87,
+                    "img_base64": base64.b64encode(b"\x89PNG\r\n\x1a\nimage").decode("ascii"),
+                }
+            ],
+        }
+
+
 def test_exact_find_returns_normalized_evidence(tmp_path) -> None:
     artifact_dir = write_artifact_fixture(tmp_path)
     repo = GridRetrievalRepository(artifact_dir)
@@ -110,6 +143,35 @@ def test_retrieval_adds_s3_figure_uri(tmp_path, monkeypatch) -> None:
     figure = evidence[0].metadata["figures"][0]
     assert figure["local_path"].endswith("figures/grid/doc/gate-2.png")
     assert figure["s3_uri"] == "s3://bucket/prefix/figures/grid/doc/gate-2.png"
+
+
+def test_colivara_sync_and_hits_return_visual_page(tmp_path) -> None:
+    artifact_dir = write_artifact_fixture(tmp_path)
+    client = FakeColiVaraClient()
+
+    index_path = build_colivara_index(
+        artifact_dir,
+        collection_name="grid-test",
+        client=client,
+        wait=True,
+    )
+    hits = load_colivara_hits(
+        artifact_dir,
+        "Gate 2 visual evidence",
+        top_k=1,
+        client=client,
+    )
+
+    assert index_path.exists()
+    assert client.upserts[0]["collection_name"] == "grid-test"
+    assert client.upserts[0]["metadata"]["grid_document_id"] == "grid/doc.txt"
+    assert hits[0].source == "colivara"
+    assert hits[0].document_id == "grid/doc.txt"
+    assert hits[0].score == 0.87
+    assert "Parsed page text" in hits[0].text
+    figure = hits[0].metadata["figures"][0]
+    assert figure["category"] == "colivara_page"
+    assert (artifact_dir / figure["image_path"]).exists()
 
 
 def test_vector_and_pageindex_indexes_are_queryable(tmp_path, monkeypatch) -> None:

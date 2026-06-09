@@ -18,6 +18,7 @@ DEPLOYED_STATE_JSON = REPO_ROOT / "agentcore" / ".cli" / "deployed-state.json"
 CDK_OUT_DIR = REPO_ROOT / "agentcore" / "cdk" / "cdk.out"
 RUNTIME_ARTIFACT_DIR = "/tmp/grid-agent-core/artifacts"
 DEFAULT_VOYAGE_SECRET_NAME = "grid-agent-core/voyage-api-key"
+DEFAULT_COLIVARA_SECRET_NAME = "grid-agent-core/colivara-api-key"
 AWS_HELPER_TIMEOUT_SECONDS = 120
 ASSET_UPLOAD_TIMEOUT_SECONDS = 7200
 AGENTCORE_DEPLOY_TIMEOUT_SECONDS = 3600
@@ -93,10 +94,10 @@ def ensure_artifact_files() -> None:
         )
 
 
-def ensure_voyage_secret(env: dict[str, str], secret_name: str) -> None:
-    key = env.get("VOYAGE_API_KEY", "")
+def ensure_api_secret(env: dict[str, str], *, env_name: str, secret_name: str, required_message: str) -> None:
+    key = env.get(env_name, "")
     if not key:
-        raise SystemExit("VOYAGE_API_KEY is required because the vector index uses Voyage.")
+        raise SystemExit(required_message)
 
     describe = subprocess.run(
         [
@@ -168,7 +169,12 @@ def set_runtime_env(env_vars: list[dict[str, str]], name: str, value: str) -> No
     env_vars.append({"name": name, "value": value})
 
 
-def update_agentcore_json(env: dict[str, str], secret_name: str) -> None:
+def update_agentcore_json(
+    env: dict[str, str],
+    *,
+    voyage_secret_name: str,
+    colivara_secret_name: str,
+) -> None:
     payload = json.loads(AGENTCORE_JSON.read_text(encoding="utf-8"))
     runtimes = payload.get("runtimes", [])
     runtime = next((item for item in runtimes if item.get("name") == "GridAgentCore"), None)
@@ -182,7 +188,10 @@ def update_agentcore_json(env: dict[str, str], secret_name: str) -> None:
     set_runtime_env(env_vars, "GRID_ARTIFACT_DIR", RUNTIME_ARTIFACT_DIR)
     set_runtime_env(env_vars, "GRID_S3_BUCKET", env["GRID_S3_BUCKET"])
     set_runtime_env(env_vars, "GRID_S3_PREFIX", env["GRID_S3_PREFIX"].strip("/"))
-    set_runtime_env(env_vars, "VOYAGE_API_KEY", f"{{{{resolve:secretsmanager:{secret_name}}}}}")
+    set_runtime_env(env_vars, "VOYAGE_API_KEY", f"{{{{resolve:secretsmanager:{voyage_secret_name}}}}}")
+    set_runtime_env(env_vars, "COLIVARA_API_KEY", f"{{{{resolve:secretsmanager:{colivara_secret_name}}}}}")
+    set_runtime_env(env_vars, "COLIVARA_COLLECTION_NAME", env.get("COLIVARA_COLLECTION_NAME", "grid-agent-core"))
+    set_runtime_env(env_vars, "COLIVARA_API_BASE_URL", env.get("COLIVARA_API_BASE_URL", "https://api.colivara.com"))
 
     AGENTCORE_JSON.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -406,7 +415,7 @@ def print_frontend_instructions(target: str) -> None:
     print("  cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore")
     print("  set -a; source ../../.env; set +a")
     print(f"  export AGENTCORE_RUNTIME_ARN={shlex.quote(runtime_arn)}")
-    print("  export AGENTCORE_RUNTIME_QUALIFIER=DEFAULT")
+    print("  export AGENTCORE_RUNTIME_QUALIFIER=")
     print("  uv run grid-local-api --port 8000")
     print("\nTerminal 2:")
     print("  cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore/frontend")
@@ -419,6 +428,7 @@ def main() -> None:
     parser.add_argument("--target", default="default")
     parser.add_argument("--env-file", type=Path, default=REPO_ROOT / ".env")
     parser.add_argument("--voyage-secret-name", default=DEFAULT_VOYAGE_SECRET_NAME)
+    parser.add_argument("--colivara-secret-name", default=DEFAULT_COLIVARA_SECRET_NAME)
     parser.add_argument("--dry-run-only", action="store_true")
     parser.add_argument("--skip-s3-check", action="store_true")
     args = parser.parse_args()
@@ -434,12 +444,28 @@ def main() -> None:
             "GRID_S3_BUCKET",
             "GRID_S3_PREFIX",
             "VOYAGE_API_KEY",
+            "COLIVARA_API_KEY",
         ],
     )
 
     ensure_artifact_files()
-    ensure_voyage_secret(env, args.voyage_secret_name)
-    update_agentcore_json(env, args.voyage_secret_name)
+    ensure_api_secret(
+        env,
+        env_name="VOYAGE_API_KEY",
+        secret_name=args.voyage_secret_name,
+        required_message="VOYAGE_API_KEY is required because the vector index uses Voyage.",
+    )
+    ensure_api_secret(
+        env,
+        env_name="COLIVARA_API_KEY",
+        secret_name=args.colivara_secret_name,
+        required_message="COLIVARA_API_KEY is required for ColiVara visual retrieval.",
+    )
+    update_agentcore_json(
+        env,
+        voyage_secret_name=args.voyage_secret_name,
+        colivara_secret_name=args.colivara_secret_name,
+    )
     if not args.skip_s3_check:
         verify_s3_artifacts(env)
     deploy(env, target=args.target, dry_run_only=args.dry_run_only)

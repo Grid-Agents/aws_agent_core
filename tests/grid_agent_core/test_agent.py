@@ -44,6 +44,7 @@ class FakeRepository:
 def test_normalize_methods_defaults_and_validates() -> None:
     assert normalize_methods(None) == ["vector", "pageindex", "find"]
     assert normalize_methods(["graphrag"]) == ["graphrag"]
+    assert normalize_methods(["colivara"]) == ["colivara"]
     try:
         normalize_methods(["bad"])
     except ValueError as exc:

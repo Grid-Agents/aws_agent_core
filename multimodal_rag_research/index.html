@@ -410,7 +410,7 @@
           <p class="subtitle">A source-backed comparison of current production patterns and cutting-edge visual retrieval methods, with a recommendation for adding visual page retrieval to the existing Grid document stack.</p>
         </div>
         <aside class="meta" aria-label="Report metadata">
-          <div><strong>Last researched</strong>June 5, 2026</div>
+          <div><strong>Last researched</strong>June 8, 2026</div>
           <div><strong>Primary question</strong>Should the current text-plus-figure RAG design add visual page retrieval?</div>
           <div><strong>Short answer</strong>Yes. Add it as a fourth retrieval tool and keep the existing stack.</div>
         </aside>
@@ -424,6 +424,9 @@
         <a href="#metrics">Metrics</a>
         <a href="#current-design">Current Design</a>
         <a href="#visual-tool">Fourth Tool</a>
+        <a href="#visual-implementation">Implementation</a>
+        <a href="#aws-cost">AWS Cost</a>
+        <a href="#api-options">Hosted APIs</a>
         <a href="#roadmap">Roadmap</a>
         <a href="#sources">Sources</a>
       </div>
@@ -714,6 +717,231 @@
         </div>
       </section>
 
+      <section id="visual-implementation">
+        <h2>Visual Retriever Implementation Details</h2>
+        <p class="lead">The visual retriever should be implemented as a small independent retrieval service, not as a rewrite of the existing Grid stack. Its durable contract is page-level provenance: given a query, return ranked page images, document/page IDs, optional figure IDs, and enough metadata for the root agent to cite or display the evidence.</p>
+
+        <h3>Service boundary</h3>
+        <div class="grid-3">
+          <article class="card">
+            <h3>Page renderer</h3>
+            <p>Render each source PDF page once at a stable DPI, usually 144-200 DPI for retrieval and a separate higher-resolution copy only if the frontend needs inspection. Store images under deterministic keys such as <code>s3://grid-corpus/pages/{document_key}/p00012.png</code>.</p>
+          </article>
+          <article class="card">
+            <h3>Embedding worker</h3>
+            <p>Batch page images through a late-interaction model such as ColQwen2.5, ColQwen2, or ColPali. Persist model name, revision, pooling/compression settings, embedding dtype, and index build ID so retrieval scores can be reproduced after a rebuild.</p>
+          </article>
+          <article class="card">
+            <h3>Search API</h3>
+            <p>Expose a narrow API: text query, top-k, document filters, and optional evidence type hints. The service handles query embedding, MaxSim-style multi-vector scoring, metadata filtering, and manifest lookup before returning page-level evidence.</p>
+          </article>
+        </div>
+
+        <h3>Index artifacts</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Artifact</th>
+                <th>Purpose</th>
+                <th>Suggested fields</th>
+                <th>Why it matters</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>page_image_manifest.jsonl</code></td>
+                <td>Stable join table from retrieval result to document evidence.</td>
+                <td><code>document_key</code>, <code>source_uri</code>, <code>page</code>, <code>image_uri</code>, <code>width</code>, <code>height</code>, <code>text_span</code>, <code>figure_ids</code>, <code>sha256</code>.</td>
+                <td>Keeps visual retrieval auditable and lets the frontend display exact pages or figure crops.</td>
+              </tr>
+              <tr>
+                <td><code>visual_index/</code></td>
+                <td>Multi-vector store for page-image embeddings.</td>
+                <td>Vector DB collection plus model revision, vector shape, dtype, pooling, quantization, and build timestamp.</td>
+                <td>ColPali-style indexes are sensitive to model and compression choices; version them like compiled artifacts.</td>
+              </tr>
+              <tr>
+                <td><code>visual_eval.jsonl</code></td>
+                <td>Small labeled QA set for figure, chart, visual table, and layout questions.</td>
+                <td><code>question</code>, <code>expected_pages</code>, <code>expected_figures</code>, <code>evidence_type</code>, <code>answer_notes</code>.</td>
+                <td>Prevents a visually impressive retriever from shipping without better Grid-specific recall.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Query-time flow</h3>
+        <div class="grid-2">
+          <div>
+            <ol class="checklist">
+              <li>Route to <code>visual_page_retrieval</code> when the user asks about figures, charts, diagrams, screenshots, spatial layout, or when text retrieval is weak.</li>
+              <li>Fetch visual top-k pages with document filters if the current conversation already narrowed the document set.</li>
+              <li>Join each hit against <code>page_image_manifest.jsonl</code> and the existing <code>FigureRecord</code> records.</li>
+              <li>Fuse results with vector/reranker, PageIndex, and GraphRAG using reciprocal rank fusion or a simple evidence-budget rule.</li>
+              <li>Pass only the top page images or cropped figures to the answer model when visual inspection is required.</li>
+              <li>Return visible trajectory events: tool call, top pages, scores, latency, selected citations, and any retrieval errors.</li>
+            </ol>
+          </div>
+          <div class="card">
+            <h3>Implementation shape</h3>
+            <pre><code>multimodal_rag_research/        # research report
+grid_index/
+  build_page_images.py          # PDF -> page PNG/JPEG + manifest
+  build_visual_index.py         # page images -> ColQwen/ColPali index
+  upload_visual_artifacts.py    # manifest/images/index -> S3
+agent_tools/
+  visual_page_retrieval.py      # AgentCore tool wrapper
+frontend/
+  evidence_viewer.tsx           # page/figure citation display</code></pre>
+            <p class="small">Names are illustrative. The important constraint is that the retriever owns page-image search while the agent owns routing, fusion, and answer synthesis.</p>
+          </div>
+        </div>
+
+        <div class="callout">
+          <p><strong>AWS security boundary:</strong> keep raw documents, page images, and indexes in private S3 prefixes. The deployed runtime role should read only the configured corpus/index prefixes. The frontend should receive short-lived signed URLs or backend-proxied image bytes, not broad S3 access.</p>
+        </div>
+      </section>
+
+      <section id="aws-cost">
+        <h2>Rough AWS Cost to Self-Deploy</h2>
+        <p class="lead">Cost depends heavily on whether the visual model runs only during offline indexing or stays online for query embeddings. The estimates below assume a single low-to-moderate traffic environment in a US AWS region, no production high availability, and Claude Sonnet-class generation. Verify exact numbers in the AWS pricing calculator before deployment.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Cost item</th>
+                <th>Rough unit cost</th>
+                <th>Practical estimate</th>
+                <th>Notes for Grid</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>AgentCore Runtime</td>
+                <td>$0.0895 per vCPU-hour and $0.00945 per GB-hour.</td>
+                <td>AWS's 60-second sample session is $0.0007235, so 10K similar sessions is about $7.24 before model calls.</td>
+                <td>Usually not the main bill. AgentCore is mostly orchestration, isolation, tool calls, and observability.</td>
+              </tr>
+              <tr>
+                <td>Claude Sonnet generation</td>
+                <td>Claude Sonnet 4.6 standard pricing is $3 per million input tokens and $15 per million output tokens in Anthropic's public pricing; Bedrock pricing and endpoint premiums should be checked per region.</td>
+                <td>Typical RAG answer at 10K input + 1.5K output tokens is roughly $0.05. Heavier visual answers at 25K input + 3K output are roughly $0.12.</td>
+                <td>This is the dominant per-query cost once traffic grows. Cache stable tool descriptions and keep retrieved evidence tight.</td>
+              </tr>
+              <tr>
+                <td>Offline visual embedding build</td>
+                <td>A single A10G-class EC2 GPU such as <code>g5.xlarge</code> is roughly $1/hour in common US regions.</td>
+                <td>A one-time 10-50 hour build is roughly $10-$50. Rebuilds after corpus or model changes repeat this cost.</td>
+                <td>Good for prototypes. Shut the GPU down after building the index.</td>
+              </tr>
+              <tr>
+                <td>Always-on visual embedding API</td>
+                <td>Same GPU class, but running continuously.</td>
+                <td>About $730/month per always-on <code>g5.xlarge</code>-class instance, plus storage and networking.</td>
+                <td>Needed only if query embeddings must be low-latency and self-hosted. Add another replica for HA or higher traffic.</td>
+              </tr>
+              <tr>
+                <td>Multi-vector search database</td>
+                <td>Varies by Vespa/Qdrant/Weaviate/LanceDB deployment size.</td>
+                <td>Small dev node: tens of dollars/month. Production CPU search cluster: low hundreds/month and up.</td>
+                <td>Prefer an engine with native multi-vector late-interaction support. OpenSearch is useful for standard vector search, but is not the cleanest first choice for true ColPali MaxSim retrieval.</td>
+              </tr>
+              <tr>
+                <td>S3, ECR, CloudWatch, frontend hosting</td>
+                <td>Usage based.</td>
+                <td>Usually single-digit to low tens of dollars/month for a small corpus and light logs.</td>
+                <td>Large page images and verbose traces can grow this faster than expected. Add lifecycle policies for rebuild artifacts.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Monthly scenarios</h3>
+        <div class="grid-3">
+          <article class="card">
+            <h3>Hosted visual API pilot</h3>
+            <p><span class="tag accent">$50-$200/month</span></p>
+            <p>Use ColiVara or similar for visual retrieval, AgentCore for orchestration, and Bedrock Sonnet for answers. This is the fastest way to validate Grid visual recall without owning GPU operations.</p>
+          </article>
+          <article class="card">
+            <h3>Self-hosted prototype</h3>
+            <p><span class="tag warn">$100-$400/month</span></p>
+            <p>Run GPU only for batch index builds, keep a small CPU search service online, and accept slower or less frequent query embedding. This is viable for evaluation, not polished production latency.</p>
+          </article>
+          <article class="card">
+            <h3>Always-on self-hosted</h3>
+            <p><span class="tag warn">$800-$1,300+/month</span></p>
+            <p>Keep a GPU-backed ColQwen/ColPali API online plus a CPU search database. Production HA, multiple environments, or larger indexes can push this above $2K-$5K/month before LLM tokens.</p>
+          </article>
+        </div>
+
+        <div class="callout warning">
+          <p><strong>Cost recommendation:</strong> start with a hosted ColPali-style API or a temporary GPU indexing job. Do not commit to an always-on GPU endpoint until the Grid eval set proves that visual retrieval materially improves answer accuracy and citation quality.</p>
+        </div>
+      </section>
+
+      <section id="api-options">
+        <h2>API-Based ColPali-Style Options</h2>
+        <p class="lead">Yes, there are API or managed-service paths, but distinguish true late-interaction multi-vector retrieval from ordinary multimodal embedding APIs. A single-vector image/text embedding API can be useful, but it is not the same retrieval method as ColPali or ColQwen.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Option</th>
+                <th>How close it is to ColPali-style retrieval</th>
+                <th>What you manage</th>
+                <th>Recommendation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>ColiVara hosted API</td>
+                <td>Closest managed shortcut. ColiVara describes itself as a visual retrieval API based on the ColPali paper and ColQwen2 embeddings, with document upsert, text search, image search, metadata filtering, and embeddings endpoints.</td>
+                <td>API integration, collection naming, metadata filters, result mapping back to Grid document IDs, privacy review, and cost limits.</td>
+                <td>Best first choice for a fast Grid pilot if sending documents to a third-party API is acceptable.</td>
+              </tr>
+              <tr>
+                <td>Vespa Cloud</td>
+                <td>Strong production search option. Vespa documents ColPali/MaxSim-style visual retrieval and has tensor ranking machinery for late interaction.</td>
+                <td>Application schema, ranking profile, ingestion pipeline, and usually the embedding model pipeline.</td>
+                <td>Best if you want a scalable managed search platform and can invest in Vespa configuration.</td>
+              </tr>
+              <tr>
+                <td>Qdrant Cloud or self-hosted Qdrant</td>
+                <td>Good database primitive. Qdrant supports multivectors with a MaxSim comparator, which matches the key scoring operation needed by ColPali-style retrieval.</td>
+                <td>Embedding model serving, page rendering, ingestion workers, index sizing, and result fusion.</td>
+                <td>Good if you want a simpler vector database API but are comfortable owning ColQwen/ColPali inference.</td>
+              </tr>
+              <tr>
+                <td>Weaviate Cloud or self-hosted Weaviate</td>
+                <td>Good database primitive. Weaviate documents multi-vector embeddings for ColBERT, ColPali, and ColQwen-style late interaction.</td>
+                <td>Embedding generation for ColPali/ColQwen, schema, ingestion, and operational tuning.</td>
+                <td>Good if the broader Grid stack already prefers Weaviate or wants hybrid search features.</td>
+              </tr>
+              <tr>
+                <td>LanceDB Cloud or self-hosted LanceDB</td>
+                <td>Good local/cloud data layer. LanceDB documents ColPali embedding support and multivector search, with ColQwen2.5 and ColPali model options.</td>
+                <td>The <code>colpali-engine</code> dependency, GPU/CPU inference, table schema, and index build choices.</td>
+                <td>Good for a compact Python-first prototype and reproducible local experiments.</td>
+              </tr>
+              <tr>
+                <td>Generic multimodal embedding APIs</td>
+                <td>Not equivalent. Voyage, Cohere, Amazon, and similar APIs can provide useful multimodal or text embeddings, but most produce one vector per chunk/image rather than many page-patch vectors with late interaction.</td>
+                <td>Normal vector index and reranking.</td>
+                <td>Use as a cheaper baseline, not as the SOTA ColPali-style visual retriever.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout">
+          <p><strong>Recommended path for Grid:</strong> use ColiVara for a first evaluation if third-party document processing is allowed. In parallel, keep the manifest and tool contract compatible with a later self-hosted Vespa, Qdrant, Weaviate, or LanceDB deployment so the agent integration does not depend on one provider.</p>
+        </div>
+      </section>
+
       <section id="roadmap">
         <h2>Practical Roadmap</h2>
         <div class="table-wrap">
@@ -782,6 +1010,17 @@
           <li id="src-vidorev3"><strong>ViDoRe V3.</strong> <a href="https://arxiv.org/abs/2601.08620">ViDoRe V3: A Comprehensive Evaluation of RAG in Complex Real-World Scenarios</a>. Used for 2026 benchmark scope and findings about visual retrievers, late interaction, reranking, hybrid contexts, and grounding gaps.</li>
           <li id="src-argus"><strong>Argus-Retriever.</strong> <a href="https://arxiv.org/abs/2606.04300">Argus-Retriever: Vision-LLM Late-Interaction Retrieval</a>. Used for June 2026 frontier scores and query-conditioned late-interaction design.</li>
           <li id="src-nemotron"><strong>Nemotron ColEmbed V2.</strong> <a href="https://arxiv.org/abs/2602.03992">Nemotron ColEmbed V2</a>. Used for 2026 ViDoRe V3 result and discussion of VLM-based visual document embeddings.</li>
+          <li id="src-aws-agentcore-pricing"><strong>AWS AgentCore pricing.</strong> <a href="https://aws.amazon.com/bedrock/agentcore/pricing/">Amazon Bedrock AgentCore Pricing</a>. Used for Runtime CPU/memory rates, Gateway rates, and AWS's sample Runtime session cost.</li>
+          <li id="src-bedrock-sonnet"><strong>Amazon Bedrock Claude Sonnet 4.6 model card.</strong> <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-6.html">Claude Sonnet 4.6 - Amazon Bedrock</a>. Used for Bedrock model IDs, image/text modality support, endpoint options, and regional availability.</li>
+          <li id="src-claude-pricing"><strong>Claude API pricing.</strong> <a href="https://platform.claude.com/docs/en/about-claude/pricing">Pricing - Claude API Docs</a>. Used for current Sonnet 4.6 token-price assumptions and cloud endpoint premium notes; Bedrock bills should still be checked in AWS pricing for the chosen endpoint.</li>
+          <li id="src-ec2-pricing"><strong>Amazon EC2 pricing.</strong> <a href="https://aws.amazon.com/ec2/pricing/on-demand/">EC2 On-Demand Pricing</a>. Used for the hourly on-demand cost model behind rough GPU self-host estimates.</li>
+          <li id="src-opensearch-pricing"><strong>Amazon OpenSearch pricing.</strong> <a href="https://aws.amazon.com/opensearch-service/pricing/">Amazon OpenSearch Service Pricing</a>. Used for Serverless OCU behavior and caution around standard vector search cost models.</li>
+          <li id="src-colivara"><strong>ColiVara.</strong> <a href="https://colivara.com/">ColiVara homepage</a>. Used for API-based visual retrieval, ColPali/ColQwen2 positioning, document format support, HalfVecs, metadata filtering, and hosted/on-prem deployment options.</li>
+          <li id="src-colivara-api"><strong>ColiVara API reference.</strong> <a href="https://docs.colivara.com/guide/api-reference">API Reference</a>. Used for upsert, text search, image search, collection, document, and embeddings endpoint behavior.</li>
+          <li id="src-vespa-colpali"><strong>Vespa ColPali.</strong> <a href="https://vespa.ai/solutions/visual-retrieval-augmented-generation/colpali/">ColPali - Vespa.ai</a>. Used for Vespa Cloud and tensor-ranking support for ColPali-style visual retrieval.</li>
+          <li id="src-qdrant-multivector"><strong>Qdrant multivectors.</strong> <a href="https://qdrant.tech/documentation/manage-data/vectors/">Qdrant Vectors documentation</a>. Used for native multivector configuration and MaxSim comparator support.</li>
+          <li id="src-weaviate-multivector"><strong>Weaviate multivectors.</strong> <a href="https://docs.weaviate.io/weaviate/tutorials/multi-vector-embeddings">Multi-vector embeddings in Weaviate</a>. Used for Weaviate's ColBERT, ColPali, and ColQwen late-interaction support.</li>
+          <li id="src-lancedb-colpali"><strong>LanceDB ColPali.</strong> <a href="https://docs.lancedb.com/integrations/embedding/colpali">ColPali - LanceDB</a>. Used for LanceDB's ColPali/ColQwen2.5 multivector embedding integration.</li>
         </ol>
       </section>
     </main>
