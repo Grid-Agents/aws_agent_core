@@ -9,6 +9,13 @@ from .settings import artifact_dir, s3_bucket, s3_prefix
 
 
 UPLOAD_EXCLUDED_DIRS = {"parse_resume_cache", "parse"}
+# GraphRAG's LLM cache (~70MB) and logs are only needed to resume a rebuild, never at
+# query time — skip them so the runtime download stays lean. (Vector's cache/ IS needed,
+# so this is path-specific rather than a bare "cache" name match.)
+UPLOAD_EXCLUDED_PREFIXES = (
+    "graphrag_data/graph_index/graphrag_ms/cache",
+    "graphrag_data/graph_index/graphrag_ms/logs",
+)
 
 
 def artifact_revision(path: Path | None = None) -> str:
@@ -52,6 +59,8 @@ def upload_artifacts(*, source_dir: Path, bucket: str, prefix: str) -> int:
             continue
         rel = path.relative_to(source_dir).as_posix()
         if any(part in UPLOAD_EXCLUDED_DIRS for part in Path(rel).parts):
+            continue
+        if any(rel.startswith(prefix) for prefix in UPLOAD_EXCLUDED_PREFIXES):
             continue
         key = f"{prefix}/{rel}" if prefix else rel
         content_type = mimetypes.guess_type(path.name)[0]

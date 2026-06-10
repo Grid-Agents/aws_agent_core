@@ -13,7 +13,7 @@
       "build": "CodeZip",
       "entrypoint": "main.py",
       "codeLocation": "app/GridAgentCore/",
-      "runtimeVersion": "PYTHON_3_14",
+      "runtimeVersion": "PYTHON_3_13",
       "networkMode": "PUBLIC",
       "protocol": "HTTP",
       "instrumentation": {
@@ -71,6 +71,10 @@
         {
           "name": "COLQWEN2_IMAGE_DPI",
           "value": "144"
+        },
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "value": "{{resolve:secretsmanager:grid-agent-core/anthropic-api-key}}"
         }
       ]
     }

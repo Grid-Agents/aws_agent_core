@@ -29,6 +29,16 @@ GRAPHRAG_REQUIRED_MODULES = (
     "lancedb",
     "litellm",
 )
+
+
+def _graphrag_python() -> str:
+    """Interpreter that runs the GraphRAG worker subprocess.
+
+    GraphRAG (and its `spacy` dependency) only support CPython <= 3.13, while the
+    main app/runtime runs on 3.14, so the worker lives in its own venv. Set
+    GRID_GRAPHRAG_PYTHON to that venv's python; defaults to the current interpreter.
+    """
+    return os.getenv("GRID_GRAPHRAG_PYTHON", sys.executable)
 PAGEINDEX_LOGIC = "vector_pageindex_rag_eval.OfficialPageIndexRAG"
 PAGEINDEX_REPO_URL = "https://github.com/VectifyAI/PageIndex.git"
 
@@ -441,11 +451,21 @@ def corpus_hash(corpus: dict[str, str]) -> str:
 
 
 def _missing_graphrag_dependencies() -> list[str]:
-    return [
-        module
-        for module in GRAPHRAG_REQUIRED_MODULES
-        if importlib.util.find_spec(module) is None
-    ]
+    # graphrag lives in the worker interpreter (see _graphrag_python), which may differ
+    # from the orchestrator's. Probe that interpreter rather than the current one.
+    py = _graphrag_python()
+    if py == sys.executable:
+        return [m for m in GRAPHRAG_REQUIRED_MODULES if importlib.util.find_spec(m) is None]
+    code = (
+        "import importlib.util;"
+        f"mods={list(GRAPHRAG_REQUIRED_MODULES)!r};"
+        "print(','.join(m for m in mods if importlib.util.find_spec(m) is None))"
+    )
+    try:
+        out = subprocess.run([py, "-c", code], capture_output=True, text=True, timeout=30)
+    except Exception:
+        return list(GRAPHRAG_REQUIRED_MODULES)
+    return [m for m in out.stdout.strip().split(",") if m]
 
 
 def build_graphrag_index(artifact_dir: Path, *, rebuild: bool = False, show_progress: bool = False) -> None:
@@ -476,7 +496,7 @@ def build_graphrag_index(artifact_dir: Path, *, rebuild: bool = False, show_prog
         config={"corpus_hash": hash_value},
     )
     command = [
-        sys.executable,
+        _graphrag_python(),
         "-m",
         "grid_agent_core.graphrag.graphrag_ms_worker",
     ]
@@ -536,7 +556,7 @@ def load_graphrag_hits(artifact_dir: Path, query: str, *, top_k: int = 8) -> lis
         config={"corpus_hash": hash_value},
     )
     process = subprocess.run(
-        [sys.executable, "-m", "grid_agent_core.graphrag.graphrag_ms_worker"],
+        [_graphrag_python(), "-m", "grid_agent_core.graphrag.graphrag_ms_worker"],
         input=json.dumps(request),
         capture_output=True,
         env={**os.environ, "PYTHONUNBUFFERED": "1"},

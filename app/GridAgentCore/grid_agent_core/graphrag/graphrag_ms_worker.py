@@ -7,8 +7,12 @@ from typing import Any
 
 from .worker_lib import load_corpus, run_worker
 
-LLM_MODEL = os.getenv("GRID_GRAPHRAG_MODEL", "claude-haiku-4-5")
-LLM_BASE_URL = "https://api.anthropic.com/v1"
+# Must be a full Anthropic model id (litellm calls anthropic/<model>); the bare
+# "claude-haiku-4-5" alias 404s. Verified against GET /v1/models for this key.
+LLM_MODEL = os.getenv("GRID_GRAPHRAG_MODEL", "claude-haiku-4-5-20251001")
+# litellm appends its own /v1/messages, so the base must NOT include /v1
+# (".../v1" -> doubled /v1/v1 -> 404). Verified with direct litellm calls.
+LLM_BASE_URL = "https://api.anthropic.com"
 EMBED_MODEL = os.getenv("GRID_GRAPHRAG_EMBED_MODEL", "voyage-law-2")
 
 
@@ -73,12 +77,41 @@ def _build_config(graph_dir: str) -> Any:
     )
 
 
+def _patch_litellm_top_p_conflict() -> None:
+    """Claude 4.x models reject `temperature` and `top_p` being sent together, but
+    GraphRAG always injects both from config (and its `drop_params` only drops
+    *unsupported* params, not this valid-but-mutually-exclusive pair). We drop
+    `top_p` whenever `temperature` is present, at GraphRAG's litellm call sites."""
+    import graphrag.language_model.providers.litellm.chat_model as cm
+
+    if getattr(cm, "_grid_top_p_patched", False):
+        return
+    _completion, _acompletion = cm.completion, cm.acompletion
+
+    def _fix(kwargs: dict[str, Any]) -> dict[str, Any]:
+        if kwargs.get("temperature") is not None and kwargs.get("top_p") is not None:
+            kwargs = dict(kwargs)
+            kwargs.pop("top_p", None)
+        return kwargs
+
+    def completion(**kwargs: Any):
+        return _completion(**_fix(kwargs))
+
+    async def acompletion(**kwargs: Any):
+        return await _acompletion(**_fix(kwargs))
+
+    cm.completion = completion
+    cm.acompletion = acompletion
+    cm._grid_top_p_patched = True
+
+
 def index_fn(request: dict[str, Any]) -> dict[str, Any]:
     import importlib.metadata
 
     import graphrag.api as graph_api
     import pandas as pd
 
+    _patch_litellm_top_p_conflict()
     corpus = load_corpus(request["corpus_path"])
     graph_dir = Path(request["graph_dir"])
     graph_dir.mkdir(parents=True, exist_ok=True)
@@ -101,11 +134,11 @@ def index_fn(request: dict[str, Any]) -> dict[str, Any]:
             verbose=False,
         )
     )
-    errors = [result for result in results if result.error is not None]
+    errors = [result for result in results if getattr(result, "errors", None)]
     if errors:
         raise RuntimeError(
             "GraphRAG pipeline errors: "
-            + "; ".join(f"{result.workflow}: {result.error}" for result in errors)
+            + "; ".join(f"{result.workflow}: {result.errors}" for result in errors)
         )
     output_dir = graph_dir / "output"
     stats = _read_graph_stats(output_dir)
@@ -120,6 +153,7 @@ def query_fn(request: dict[str, Any]) -> dict[str, Any]:
     import graphrag.api as graph_api
     import pandas as pd
 
+    _patch_litellm_top_p_conflict()
     graph_dir = Path(request["graph_dir"])
     output_dir = graph_dir / "output"
     config = _build_config(str(graph_dir))
@@ -187,20 +221,30 @@ def _extract_contexts(context_data: dict[str, Any], text_units_df: Any, top_k: i
 
     short_id_to_doc: dict[str, str] = {}
     text_to_doc: dict[str, str] = {}
-    if not text_units_df.empty and "document_id" in text_units_df.columns:
-        valid = text_units_df[text_units_df["document_id"].astype(str) != ""]
-        document_ids = valid["document_id"].astype(str)
-        if "human_readable_id" in valid.columns:
+    # graphrag stores the owning document(s) per text unit in `document_ids` (a list);
+    # take the first as the source document.
+    if not text_units_df.empty and "document_ids" in text_units_df.columns:
+
+        def _first_doc(value: Any) -> str:
+            if isinstance(value, str):
+                return value
+            try:
+                return str(value[0]) if len(value) else ""
+            except (TypeError, IndexError):
+                return str(value or "")
+
+        docs = text_units_df["document_ids"].map(_first_doc)
+        if "human_readable_id" in text_units_df.columns:
             short_id_to_doc = {
-                str(short_id): document_id
-                for short_id, document_id in zip(valid["human_readable_id"], document_ids)
-                if str(short_id)
+                str(short_id): doc
+                for short_id, doc in zip(text_units_df["human_readable_id"], docs)
+                if str(short_id) and doc
             }
-        if "text" in valid.columns:
+        if "text" in text_units_df.columns:
             text_to_doc = {
-                str(text): document_id
-                for text, document_id in zip(valid["text"], document_ids)
-                if str(text)
+                str(text): doc
+                for text, doc in zip(text_units_df["text"], docs)
+                if str(text) and doc
             }
 
     contexts: list[dict[str, Any]] = []

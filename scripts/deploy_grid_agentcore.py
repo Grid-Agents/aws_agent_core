@@ -19,6 +19,8 @@ CDK_OUT_DIR = REPO_ROOT / "agentcore" / "cdk" / "cdk.out"
 RUNTIME_ARTIFACT_DIR = "/tmp/grid-agent-core/artifacts"
 DEFAULT_VOYAGE_SECRET_NAME = "grid-agent-core/voyage-api-key"
 DEFAULT_COLIVARA_SECRET_NAME = "grid-agent-core/colivara-api-key"
+DEFAULT_ANTHROPIC_SECRET_NAME = "grid-agent-core/anthropic-api-key"
+RUNTIME_PYTHON_VERSION = "PYTHON_3_13"  # graphrag/spacy have no cp314 wheels; runtime is 3.13
 AWS_HELPER_TIMEOUT_SECONDS = 120
 ASSET_UPLOAD_TIMEOUT_SECONDS = 7200
 AGENTCORE_DEPLOY_TIMEOUT_SECONDS = 3600
@@ -108,7 +110,10 @@ def ensure_api_secret(env: dict[str, str], *, env_name: str, secret_name: str, r
     key = env.get(env_name, "")
     if not key:
         raise SystemExit(required_message)
+    _ensure_secret(env, secret_name, key)
 
+
+def _ensure_secret(env: dict[str, str], secret_name: str, key: str) -> None:
     describe = subprocess.run(
         [
             "aws",
@@ -188,6 +193,7 @@ def update_agentcore_json(
     *,
     voyage_secret_name: str,
     colivara_secret_name: str,
+    anthropic_secret_name: str,
 ) -> None:
     payload = json.loads(AGENTCORE_JSON.read_text(encoding="utf-8"))
     runtimes = payload.get("runtimes", [])
@@ -195,6 +201,7 @@ def update_agentcore_json(
     if runtime is None:
         raise SystemExit("agentcore/agentcore.json does not define a GridAgentCore runtime.")
 
+    runtime["runtimeVersion"] = RUNTIME_PYTHON_VERSION
     env_vars = runtime.setdefault("envVars", [])
     set_runtime_env(env_vars, "AWS_REGION", env["AWS_REGION"])
     set_runtime_env(env_vars, "CLAUDE_CODE_USE_BEDROCK", "1")
@@ -203,6 +210,11 @@ def update_agentcore_json(
     set_runtime_env(env_vars, "GRID_S3_BUCKET", env["GRID_S3_BUCKET"])
     set_runtime_env(env_vars, "GRID_S3_PREFIX", env["GRID_S3_PREFIX"].strip("/"))
     set_runtime_env(env_vars, "VOYAGE_API_KEY", f"{{{{resolve:secretsmanager:{voyage_secret_name}}}}}")
+    # GraphRAG calls Anthropic directly (its worker LLM is not on Bedrock), so the
+    # runtime always needs this secret — graphrag is a first-class retrieval method.
+    set_runtime_env(
+        env_vars, "ANTHROPIC_API_KEY", f"{{{{resolve:secretsmanager:{anthropic_secret_name}}}}}"
+    )
     if env.get("COLIVARA_API_KEY"):
         set_runtime_env(env_vars, "COLIVARA_API_KEY", f"{{{{resolve:secretsmanager:{colivara_secret_name}}}}}")
         set_runtime_env(env_vars, "COLIVARA_COLLECTION_NAME", env.get("COLIVARA_COLLECTION_NAME", "grid-agent-core"))
@@ -492,6 +504,7 @@ def main() -> None:
     parser.add_argument("--env-file", type=Path, default=REPO_ROOT / ".env")
     parser.add_argument("--voyage-secret-name", default=DEFAULT_VOYAGE_SECRET_NAME)
     parser.add_argument("--colivara-secret-name", default=DEFAULT_COLIVARA_SECRET_NAME)
+    parser.add_argument("--anthropic-secret-name", default=DEFAULT_ANTHROPIC_SECRET_NAME)
     parser.add_argument("--dry-run-only", action="store_true")
     parser.add_argument("--skip-s3-check", action="store_true")
     args = parser.parse_args()
@@ -507,6 +520,7 @@ def main() -> None:
             "GRID_S3_BUCKET",
             "GRID_S3_PREFIX",
             "VOYAGE_API_KEY",
+            "ANTHROPIC_API_KEY",
         ],
     )
 
@@ -517,6 +531,12 @@ def main() -> None:
         env_name="VOYAGE_API_KEY",
         secret_name=args.voyage_secret_name,
         required_message="VOYAGE_API_KEY is required because the vector index uses Voyage.",
+    )
+    ensure_api_secret(
+        env,
+        env_name="ANTHROPIC_API_KEY",
+        secret_name=args.anthropic_secret_name,
+        required_message="ANTHROPIC_API_KEY is required because GraphRAG calls Anthropic directly.",
     )
     if env.get("COLIVARA_API_KEY"):
         ensure_api_secret(
@@ -529,6 +549,7 @@ def main() -> None:
         env,
         voyage_secret_name=args.voyage_secret_name,
         colivara_secret_name=args.colivara_secret_name,
+        anthropic_secret_name=args.anthropic_secret_name,
     )
     if not args.skip_s3_check:
         verify_s3_artifacts(env)
