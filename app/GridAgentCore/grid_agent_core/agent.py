@@ -79,18 +79,47 @@ def normalize_methods(methods: Any) -> list[str]:
 
 def _search_tool_description(method: str) -> str:
     return {
-        "vector": "Semantic chunk retrieval over Grid text; evidence may include optional figure metadata.",
-        "pageindex": "PageIndex tree retrieval over Grid text; evidence may include optional figure metadata.",
-        "graphrag": "GraphRAG retrieval over Grid entity/text-unit artifacts; evidence may include optional figure metadata.",
+        "vector": (
+            "Semantic (embedding) search over the Grid text corpus, with hybrid BM25 keyword "
+            "matching and reranking. Use this as your default tool: it is best for conceptual or "
+            "paraphrased questions where the answer's wording differs from your query (e.g. "
+            "\"what does the standard require for connection voltage limits?\"). "
+            "Returns the most relevant text chunks ranked by similarity; evidence may include figure metadata. "
+            "Pass a natural-language question or topic as the query."
+        ),
+        "pageindex": (
+            "Structure-aware retrieval that uses an LLM to navigate each document's section/"
+            "table-of-contents hierarchy before extracting passages. Best when the answer is tied to a "
+            "document's structure — a specific clause, numbered section, or \"where in <document> is X defined\". "
+            "Returns section-scoped passages with their node titles; evidence may include figure metadata. "
+            "Pass a question that targets a definition, clause, or section."
+        ),
+        "graphrag": (
+            "Knowledge-graph retrieval over entities and relationships extracted from the corpus. "
+            "Best for multi-hop or cross-document questions that connect entities — how parties, schemes, "
+            "obligations, or documents relate to one another (e.g. \"how does the connections reform affect "
+            "the obligations in the Grid Code?\"). Returns graph-grounded text units; evidence may include "
+            "figure metadata. Pass a question describing the entities or relationship of interest."
+        ),
         "colivara": (
-            "ColiVara visual page retrieval over Grid PDFs using multi-vector late interaction; "
-            "evidence may include full-page image blocks."
+            "Visual page retrieval over the original Grid PDFs using ColiVara multi-vector late interaction "
+            "(ColPali-style image embeddings). Use this when the answer lives in a chart, diagram, table, "
+            "schematic, or page layout rather than in extractable body text. Returns full-page images you can "
+            "read directly. Pass a natural-language description of the visual content you need."
         ),
         "colqwen2": (
-            "Self-hosted AWS ColQwen2 visual page retrieval over Grid PDFs using "
-            "page-image multi-vector embeddings; evidence may include full-page image blocks."
+            "Visual page retrieval over the original Grid PDFs using a self-hosted AWS ColQwen2 endpoint "
+            "(page-image multi-vector embeddings). Same use case as ColiVara — charts, diagrams, tables, and "
+            "complex layouts — but served from internal AWS infrastructure. Returns full-page images you can "
+            "read directly. Pass a natural-language description of the visual content you need."
         ),
-        "find": "Exact keyword and phrase search across Grid text; evidence may include optional figure metadata.",
+        "find": (
+            "Exact, case-insensitive keyword and phrase lookup over the raw Grid text (literal substring "
+            "match, no embeddings or ranking). Use this when you need precise verbatim terms — a clause "
+            "number, defined name, acronym, or quoted phrase (e.g. \"Grid Code\" or \"CC.6.1.5\") — that "
+            "semantic search might paraphrase past. Returns surrounding text snippets for each literal match. "
+            "Pass the exact term or phrase, not a question."
+        ),
     }[method]
 
 

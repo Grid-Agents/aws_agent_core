@@ -669,6 +669,62 @@ query embedding. The runtime loads stored page matrices from S3-downloaded
 artifacts, computes local MaxSim late-interaction scores, returns top pages,
 attaches the rendered page image, and includes parsed page text for citations.
 
+### ColQwen2 Tool Input And Output
+
+This is the contract for the `colqwen2_search` MCP tool the agent calls, defined
+in `grid_agent_core/agent.py` and `grid_agent_core/colqwen2.py`.
+
+**Tool input.** A single `query` string. The agent passes a natural-language
+description of the visual content it wants (for example, a chart, diagram,
+table, or page layout). The query is the only argument; there are no page,
+document, or filter parameters.
+
+**What the retriever computes** (`load_colqwen2_hits`):
+
+1. Calls the SageMaker endpoint once to embed the query into a multi-vector
+   matrix. No page images are sent at query time; the page embeddings were
+   computed at index build time and are read from local `.npy` files.
+2. Scores every stored page embedding against the query with ColBERT-style
+   MaxSim late interaction (`late_interaction_score`): for each query token it
+   takes the maximum similarity over all page patch vectors, then sums those
+   maxima.
+3. Sorts pages by score and keeps the top `top_k` (currently 8).
+
+**Retrieval result.** Each of the top pages becomes one `Evidence` item with:
+
+- a **text block** describing the match: the model name, the query, the document
+  title, the page number, the late-interaction score, and the parsed page text
+  for that page when it exists in the corpus (truncated to `MAX_PAGE_TEXT_CHARS`).
+  If no parsed text exists, the text says to rely on the attached page image;
+- a **figure payload** in `metadata["figures"]` pointing at the pre-rendered
+  full-page JPEG (rendered from the PDF at `COLQWEN2_IMAGE_DPI` during the index
+  build) via an absolute local path, plus its page number, content type,
+  byte size, hash, and score.
+
+**What is actually input into the model's context.** When the tool result is
+returned to the Claude Agent SDK, `agent.py` turns the result into content blocks:
+
+- the per-page text block (always), and
+- the **rendered full-page JPEG as a real base64 image block** - the model sees
+  the page image itself, not a path or a description. This is the point of the
+  visual retriever: it surfaces charts, diagrams, tables, and layout that text
+  extraction loses.
+
+Two caps apply to the images entering context:
+
+- **At most `MAX_TOOL_IMAGES = 4` page images per `colqwen2_search` call**, even
+  though `top_k = 8` pages are returned. The image budget is spent in score
+  order, so pages ranked 5-8 contribute only their text block and figure
+  description, not the actual image.
+- **At most `MAX_TOOL_IMAGE_BYTES = 4_000_000` bytes per image**; larger images
+  are skipped. These base64 image blocks are also why the SDK stdio buffer is
+  raised to 32 MiB (`SDK_MAX_BUFFER_BYTES`).
+
+Note that `inspect_evidence` returns the evidence JSON (including the figure's
+local path) as text only; it does not re-attach an image to the context. Only
+`*_search` results attach page images, so the model gets full visual context for
+the top 4 pages of a ColQwen2 search and text-only evidence for the rest.
+
 ### One Command For All Indexes
 
 ```bash
