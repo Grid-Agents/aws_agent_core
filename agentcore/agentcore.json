@@ -59,6 +59,18 @@
         {
           "name": "COLIVARA_API_BASE_URL",
           "value": "https://api.colivara.com"
+        },
+        {
+          "name": "COLQWEN2_ENDPOINT_NAME",
+          "value": "grid-agent-core-colqwen2"
+        },
+        {
+          "name": "COLQWEN2_MODEL_NAME",
+          "value": "vidore/colqwen2-v1.0"
+        },
+        {
+          "name": "COLQWEN2_IMAGE_DPI",
+          "value": "144"
         }
       ]
     }

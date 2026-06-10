@@ -59,9 +59,23 @@ def _agentcore_runtime_arn() -> str:
 def _agentcore_client():
     try:
         import boto3
+        from botocore.config import Config
     except ModuleNotFoundError as exc:  # pragma: no cover - dependency check
         raise RuntimeError("boto3 is required to invoke deployed AgentCore runtime.") from exc
-    return boto3.client("bedrock-agentcore", region_name=os.getenv("AWS_REGION"))
+    # The deployed Claude/tool loop can take well over botocore's default 60s read
+    # timeout before the first streamed bytes arrive (query embedding via SageMaker,
+    # late-interaction scoring, then the agent loop). Use a generous read timeout and
+    # disable retries so a slow run is never silently re-invoked.
+    read_timeout = int(os.getenv("AGENTCORE_READ_TIMEOUT_SECONDS", "900"))
+    return boto3.client(
+        "bedrock-agentcore",
+        region_name=os.getenv("AWS_REGION"),
+        config=Config(
+            read_timeout=read_timeout,
+            connect_timeout=30,
+            retries={"max_attempts": 1},
+        ),
+    )
 
 
 def _agentcore_event_lines(payload: dict[str, Any]) -> Iterable[str]:

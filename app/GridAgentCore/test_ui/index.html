@@ -541,10 +541,19 @@ function renderAnswer(r){
 }
 
 // ---- run ----
+// Reuse one runtime session id across queries so the deployed AgentCore microVM
+// stays warm. A fresh session cold-starts the container (+artifact download from
+// S3), which costs ~5 min; reusing it drops first-event latency to ~10s.
+function runtimeSessionId(){
+  let id=sessionStorage.getItem("grid_runtime_session_id");
+  if(!id){ id=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+"-"+Math.random().toString(16).slice(2));
+    sessionStorage.setItem("grid_runtime_session_id",id); }
+  return id;
+}
 async function run(){
   const prompt=$("#prompt").value.trim(); if(!prompt) return;
   const methods=$$('#methods input:checked').map(c=>c.value);
-  const body={prompt,methods,enable_subagents:$("#subagents").checked,allow_sdk_file_tools:$("#filetools").checked};
+  const body={prompt,methods,enable_subagents:$("#subagents").checked,allow_sdk_file_tools:$("#filetools").checked,runtime_session_id:runtimeSessionId()};
   resetLive(methods); $("#traj").innerHTML=""; $("#traj-empty").style.display="none";
   $("#st-question").textContent="1"; actStage("question"); tick("frontend","request sent to /api/grid/run");
   $("#map-body").innerHTML='<p class="empty"><span class="spin"></span>running…</p>';
