@@ -10,7 +10,7 @@ DEFAULT_GRID_DOCS_DIR = Path("/Users/maoxunhuang/Desktop/GridAgents/Grid Docs")
 DEFAULT_ARTIFACT_DIR = PROJECT_ROOT / ".grid_artifacts"
 DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 DEFAULT_BATCH_MODEL = "claude-3-5-haiku-20241022"
-RETRIEVAL_METHODS = ("vector", "pageindex", "graphrag", "colivara", "find")
+RETRIEVAL_METHODS = ("vector", "pageindex", "graphrag", "colivara", "colqwen2", "find")
 DEFAULT_RETRIEVAL_METHODS = ("vector", "pageindex", "find")
 SUBAGENT_NAME = "span-retriever"
 
@@ -53,3 +53,19 @@ def colivara_api_base_url() -> str:
 
 def colivara_collection_name() -> str:
     return os.getenv("COLIVARA_COLLECTION_NAME", "grid-agent-core").strip()
+
+
+def colqwen2_endpoint_name() -> str:
+    return os.getenv("COLQWEN2_ENDPOINT_NAME", "").strip()
+
+
+def colqwen2_model_name() -> str:
+    return os.getenv("COLQWEN2_MODEL_NAME", "vidore/colqwen2-v1.0").strip()
+
+
+def colqwen2_image_dpi() -> int:
+    return int(os.getenv("COLQWEN2_IMAGE_DPI", "144"))
+
+
+def colqwen2_index_batch_size() -> int:
+    return int(os.getenv("COLQWEN2_INDEX_BATCH_SIZE", "2"))

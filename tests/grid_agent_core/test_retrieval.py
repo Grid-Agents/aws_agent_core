@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from grid_agent_core.colivara import build_colivara_index, load_colivara_hits
+from grid_agent_core.colqwen2 import build_colqwen2_index, load_colqwen2_hits
 from grid_agent_core.corpus import write_manifest
 from grid_agent_core.indexes import build_pageindex, build_vector_index
 from grid_agent_core.models import DocumentRecord, FigureRecord, PageRecord
@@ -115,6 +116,44 @@ class FakeColiVaraClient:
         }
 
 
+class FakeColQwen2Client:
+    def embed_images(self, image_bytes):
+        assert image_bytes == [b"page-1-image", b"page-2-image"]
+        return [
+            np.asarray([[0.2, 0.0], [0.1, 0.0]], dtype=np.float32),
+            np.asarray([[0.9, 0.0], [0.2, 0.0]], dtype=np.float32),
+        ]
+
+    def embed_queries(self, queries):
+        assert queries == ["Gate 2 visual evidence"]
+        return [np.asarray([[1.0, 0.0]], dtype=np.float32)]
+
+
+class TimeoutSplittingColQwen2Client:
+    def __init__(self):
+        self.image_calls = []
+
+    def embed_images(self, image_bytes):
+        self.image_calls.append(list(image_bytes))
+        if len(image_bytes) > 1:
+            raise RuntimeError("timed out while waiting for a response from container primary")
+        if image_bytes == [b"page-1-image"]:
+            return [np.asarray([[0.2, 0.0], [0.1, 0.0]], dtype=np.float32)]
+        if image_bytes == [b"page-2-image"]:
+            return [np.asarray([[0.9, 0.0], [0.2, 0.0]], dtype=np.float32)]
+        raise AssertionError(f"unexpected image batch: {image_bytes}")
+
+    def embed_queries(self, queries):
+        assert queries == ["Gate 2 visual evidence"]
+        return [np.asarray([[1.0, 0.0]], dtype=np.float32)]
+
+
+def fake_page_renderer(_raw_path, page_number, _dpi, image_path):
+    data = f"page-{page_number}-image".encode("ascii")
+    image_path.write_bytes(data)
+    return data
+
+
 def test_exact_find_returns_normalized_evidence(tmp_path) -> None:
     artifact_dir = write_artifact_fixture(tmp_path)
     repo = GridRetrievalRepository(artifact_dir)
@@ -172,6 +211,60 @@ def test_colivara_sync_and_hits_return_visual_page(tmp_path) -> None:
     figure = hits[0].metadata["figures"][0]
     assert figure["category"] == "colivara_page"
     assert (artifact_dir / figure["image_path"]).exists()
+
+
+def test_colqwen2_index_and_hits_return_self_hosted_visual_page(tmp_path) -> None:
+    artifact_dir = write_artifact_fixture(tmp_path)
+    client = FakeColQwen2Client()
+
+    index_path = build_colqwen2_index(
+        artifact_dir,
+        endpoint_name="grid-agent-core-colqwen2",
+        model_name="vidore/colqwen2-v1.0",
+        image_dpi=144,
+        batch_size=2,
+        client=client,
+        page_renderer=fake_page_renderer,
+    )
+    hits = load_colqwen2_hits(
+        artifact_dir,
+        "Gate 2 visual evidence",
+        top_k=1,
+        client=client,
+    )
+
+    assert index_path.exists()
+    assert hits[0].source == "colqwen2"
+    assert hits[0].document_id == "grid/doc.txt"
+    assert "[Page 2]" in hits[0].text
+    assert np.isclose(hits[0].score, 0.9, atol=1e-3)
+    assert "AWS ColQwen2 visual retrieval match" in hits[0].text
+    assert "Parsed page text" in hits[0].text
+    figure = hits[0].metadata["figures"][0]
+    assert figure["category"] == "colqwen2_page"
+    assert (artifact_dir / figure["image_path"]).exists()
+
+
+def test_colqwen2_index_splits_timed_out_image_batches(tmp_path) -> None:
+    artifact_dir = write_artifact_fixture(tmp_path)
+    client = TimeoutSplittingColQwen2Client()
+
+    index_path = build_colqwen2_index(
+        artifact_dir,
+        endpoint_name="grid-agent-core-colqwen2",
+        model_name="vidore/colqwen2-v1.0",
+        image_dpi=144,
+        batch_size=2,
+        client=client,
+        page_renderer=fake_page_renderer,
+    )
+
+    assert index_path.exists()
+    assert client.image_calls == [
+        [b"page-1-image", b"page-2-image"],
+        [b"page-1-image"],
+        [b"page-2-image"],
+    ]
 
 
 def test_vector_and_pageindex_indexes_are_queryable(tmp_path, monkeypatch) -> None:

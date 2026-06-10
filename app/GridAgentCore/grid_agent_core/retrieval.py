@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .colivara import load_colivara_hits
+from .colqwen2 import load_colqwen2_hits
 from .corpus import document_text, load_manifest, page_for_offset
 from .indexes import SearchHit, load_graphrag_hits, load_pageindex_hits, load_vector_hits, tokenize
 from .models import DocumentRecord, Evidence, FigureRecord
@@ -44,6 +45,8 @@ class GridRetrievalRepository:
             hits = load_graphrag_hits(self.artifact_dir, query, top_k=top_k)
         elif method == "colivara":
             hits = load_colivara_hits(self.artifact_dir, query, top_k=top_k)
+        elif method == "colqwen2":
+            hits = load_colqwen2_hits(self.artifact_dir, query, top_k=top_k)
         else:
             raise ValueError(f"Unsupported retrieval method: {method}")
         evidence = [self._evidence(index, hit) for index, hit in enumerate(hits, start=1)]

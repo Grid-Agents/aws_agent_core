@@ -14,6 +14,7 @@ agentcore/cdk/node_modules/
 agentcore/cdk/dist/
 agentcore/cdk/coverage/
 .cache/
+logs/
 cdk/
 .grid_artifacts/
 app/GridAgentCore/.venv/

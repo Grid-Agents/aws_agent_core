@@ -1,6 +1,6 @@
 # Grid AgentCore
 
-AWS Bedrock AgentCore application for asking cited questions over Grid documents. The repo keeps the completed `app/SimpleAgentCore/` chatbot baseline and adds `app/GridAgentCore/` for parsed Grid artifacts, vector/PageIndex/GraphRAG/ColiVara retrieval, Claude Agent SDK tools/subagents, S3 artifact deployment, and a React trajectory UI.
+AWS Bedrock AgentCore application for asking cited questions over Grid documents. The repo keeps the completed `app/SimpleAgentCore/` chatbot baseline and adds `app/GridAgentCore/` for parsed Grid artifacts, vector/PageIndex/GraphRAG/ColiVara/AWS ColQwen2 retrieval, Claude Agent SDK tools/subagents, S3 artifact deployment, and a React trajectory UI.
 
 The app exposes observable agent events: root-agent text, tool calls, retrieval results, subagent calls, selected citations, latency, metadata, and errors. It does not expose hidden model chain-of-thought.
 
@@ -25,11 +25,23 @@ uv run grid-build-indexes \
   --chunk-strategy semantic \
   --search-strategy hybrid
 
-# Optional visual retrieval sync. This uploads PDFs to ColiVara and writes
+# Optional hosted visual retrieval sync. This uploads PDFs to ColiVara and writes
 # local metadata under .grid_artifacts/indexes/colivara/.
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \
   --methods colivara
+
+# Optional self-hosted visual retrieval. From repo root, deploy the SageMaker
+# endpoint once, then build local multi-vector page indexes against it.
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+python3 scripts/deploy_colqwen2_sagemaker.py \
+  --execution-role-arn "$SAGEMAKER_EXECUTION_ROLE_ARN" \
+  --wait
+export COLQWEN2_ENDPOINT_NAME=grid-agent-core-colqwen2
+export COLQWEN2_MODEL_NAME=vidore/colqwen2-v1.0
+python3 scripts/build_colqwen2_index.py \
+  --artifact-dir .grid_artifacts \
+  --endpoint-name "$COLQWEN2_ENDPOINT_NAME"
 ```
 
 Upload the parsed corpus, figures, and indexes:
@@ -55,9 +67,11 @@ agentcore invoke \
 ```
 
 The deploy script reads `.env`, verifies local and S3 artifacts, stores
-`VOYAGE_API_KEY` and `COLIVARA_API_KEY` in AWS Secrets Manager, updates
-`agentcore/agentcore.json` with runtime-safe env vars, runs AgentCore validation
-and dry-run, deploys, then attaches S3 read access to the runtime role. Use
+`VOYAGE_API_KEY` and optional `COLIVARA_API_KEY` in AWS Secrets Manager, updates
+`agentcore/agentcore.json` with runtime-safe env vars including optional
+`COLQWEN2_ENDPOINT_NAME`, runs AgentCore validation and dry-run, deploys, then
+attaches S3 read access and optional SageMaker endpoint invoke access to the
+runtime role. Use
 `python3 scripts/deploy_grid_agentcore.py --dry-run-only` to check everything
 without deploying.
 
@@ -68,7 +82,7 @@ User / Web UI / CLI
   -> local API or AWS Bedrock AgentCore Runtime
   -> app/GridAgentCore/main.py
   -> Claude Agent SDK root agent and optional span-retriever subagent
-  -> vector, PageIndex, GraphRAG, ColiVara visual, and exact-find retrieval tools
+  -> vector, PageIndex, GraphRAG, ColiVara visual, AWS ColQwen2 visual, and exact-find retrieval tools
   -> parsed Grid corpus, raw PDFs, figure crops, and index artifacts
   -> Claude Sonnet on Amazon Bedrock
   -> cited answer plus observable trajectory
@@ -83,8 +97,10 @@ Runtime model calls use Amazon Bedrock through IAM. Parse-time VLM enrichment, V
 - `app/GridAgentCore/grid_agent_core/corpus.py` - Grid PDF parsing, text corpus, manifest, page offsets, content hashes.
 - `app/GridAgentCore/grid_agent_core/llama_parse_agentic.py` - LlamaParse Agentic parser wrapper.
 - `app/GridAgentCore/grid_agent_core/multimodal_enrichment.py` - figure-crop detection, VLM descriptions, and figure artifacts.
-- `app/GridAgentCore/grid_agent_core/indexes.py` - vector, official PageIndex, GraphRAG, and ColiVara sync entrypoints.
+- `app/GridAgentCore/grid_agent_core/indexes.py` - vector, official PageIndex, GraphRAG, ColiVara sync, and AWS ColQwen2 index entrypoints.
 - `app/GridAgentCore/grid_agent_core/colivara.py` - ColiVara REST client, PDF sync metadata, and visual page search mapping.
+- `app/GridAgentCore/grid_agent_core/colqwen2.py` - SageMaker ColQwen2 client, page-image index builder, MaxSim scoring, and visual page search mapping.
+- `app/GridAgentCore/colqwen2_service/` - SageMaker custom container for self-hosted ColQwen2 embeddings.
 - `app/GridAgentCore/grid_agent_core/rag_compat/` - vendored compatibility layer for sibling vector retrieval plus the official PageIndex adapter.
 - `app/GridAgentCore/grid_agent_core/graphrag/` - rlm-eval-style GraphRAG worker protocol, canonical chunks, metadata, and worker.
 - `app/GridAgentCore/grid_agent_core/retrieval.py` - retrieval repository and figure attachment logic.
@@ -92,6 +108,10 @@ Runtime model calls use Amazon Bedrock through IAM. Parse-time VLM enrichment, V
 - `app/GridAgentCore/grid_agent_core/local_api.py` - FastAPI NDJSON proxy for frontend and deployed runtime.
 - `app/GridAgentCore/frontend/` - Vite React Grid QA UI.
 - `scripts/deploy_grid_agentcore.py` - deployment helper for GridAgentCore runtime config, secret setup, deploy, and S3 role policy.
+- `scripts/build_colqwen2_visual_retriever.py` - end-to-end ColQwen2 visual retriever orchestrator: Terraform, Docker/ECR, SageMaker, index build, S3 upload, optional AgentCore deploy.
+- `scripts/deploy_colqwen2_sagemaker.py` - builds/pushes the ColQwen2 container and creates or updates a SageMaker endpoint.
+- `scripts/build_colqwen2_index.py` - renders Grid PDF pages and builds local ColQwen2 multi-vector index artifacts.
+- `infra/colqwen2_sagemaker/` - Terraform IaC for ECR, optional S3 artifact bucket, SageMaker execution role, SageMaker model/config/endpoint.
 - `agentcore/agentcore.json` - active AgentCore deployment target for `GridAgentCore`.
 - `agentcore/aws-targets.json` - AWS account/region deployment target.
 - `app/SimpleAgentCore/` - preserved minimal chatbot baseline.
@@ -137,6 +157,14 @@ VOYAGE_API_KEY=your-voyage-key-for-vector-and-graphrag
 COLIVARA_API_KEY=your-colivara-key-for-visual-retrieval
 COLIVARA_COLLECTION_NAME=grid-agent-core
 COLIVARA_API_BASE_URL=https://api.colivara.com
+
+# Optional self-hosted AWS ColQwen2 visual retrieval.
+COLQWEN2_ENDPOINT_NAME=grid-agent-core-colqwen2
+COLQWEN2_MODEL_NAME=vidore/colqwen2-v1.0
+COLQWEN2_IMAGE_DPI=144
+COLQWEN2_INDEX_BATCH_SIZE=2
+# Only needed for the lower-level scripts/deploy_colqwen2_sagemaker.py helper.
+SAGEMAKER_EXECUTION_ROLE_ARN=arn:aws:iam::123456789012:role/your-sagemaker-execution-role
 ```
 
 After the AgentCore runtime is deployed, add the deployed runtime connection for
@@ -360,6 +388,287 @@ SDK tool result, and includes parsed page text when the page exists in the local
 corpus. The actual visual embeddings stay in ColiVara; S3 artifact upload only
 stores the local sync metadata and any local query-result images.
 
+### AWS ColQwen2 Visual Retrieval
+
+The `colqwen2` method is the self-hosted alternative to ColiVara. Amazon
+SageMaker is AWS's managed machine-learning hosting service: in this workflow it
+runs a GPU-backed HTTP inference endpoint for a small Python service that loads
+ColQwen2 and returns embeddings. SageMaker does not own the Grid index and it
+does not run the whole agent. The Grid project still renders pages, stores index
+artifacts, performs late-interaction scoring, and exposes the MCP retrieval tool.
+
+The ColQwen2 flow uses the official ColQwen2/ColPali-family multimodal RAG
+pattern: render each PDF page as an image, call
+`ColQwen2Processor.process_images()` to produce a multi-vector page embedding,
+call `process_queries()` for the text query, then rank pages with
+ColBERT-style late interaction (`score_multi_vector` / MaxSim). Do not average
+page vectors into a single embedding; each page keeps its full
+`sequence_length x 128` embedding matrix.
+
+Correct responsibility split:
+
+1. **Container image** - `app/GridAgentCore/colqwen2_service/` is a Python HTTP
+   service with ColQwen2 loaded. It exposes `/ping` and `/invocations` for
+   `embed_images` and `embed_queries`.
+2. **ECR** - stores the built Docker image so SageMaker can pull the exact
+   service version later. ECR is only the container registry, not the running
+   compute.
+3. **SageMaker endpoint** - runs that image on a GPU instance and returns
+   ColQwen2 multi-vector embeddings. It is an embedding service, not a vector
+   database and not the owner of the index.
+4. **Index build script** - `scripts/build_colqwen2_index.py` renders Grid PDF
+   pages locally, calls SageMaker `embed_images`, and writes `.npy` page
+   embeddings plus `indexes/colqwen2/index.json` under `.grid_artifacts/`.
+5. **S3 artifact upload** - `grid-upload-artifacts` uploads the ColQwen2 page
+   images, embedding matrices, and metadata with the rest of the Grid artifacts.
+6. **AgentCore query time** - `colqwen2_search` calls SageMaker only to embed
+   the user's text query, loads the stored page matrices from downloaded
+   artifacts, computes MaxSim late-interaction scores locally, and returns
+   citation-ready page evidence to the Claude Agent SDK MCP tool.
+
+So the high-level flow is: build/push image to ECR -> deploy SageMaker embedding
+endpoint -> build Grid page embedding index by calling that endpoint -> upload
+the index to S3 -> AgentCore downloads artifacts and uses the same endpoint only
+for query embeddings during retrieval.
+
+AWS services used:
+
+- **Amazon SageMaker real-time endpoint** - hosts the ColQwen2 embedding service on a GPU instance. Default script instance type is `ml.g5.xlarge`.
+- **Amazon ECR** - stores the custom Docker image from `app/GridAgentCore/colqwen2_service/`.
+- **IAM** - SageMaker execution role pulls the image and model files; AgentCore runtime role receives `sagemaker:InvokeEndpoint`.
+- **S3** - stores the built Grid artifacts: page JPEGs, `.npy` multi-vector embeddings, index metadata, corpus, and raw PDFs.
+- **AWS Bedrock AgentCore Runtime** - runs the Claude Agent SDK agent and exposes the `colqwen2_search` MCP tool.
+
+### Build The ColQwen2 Service And Indexes
+
+Prerequisites:
+
+- AWS credentials in `.env` or your shell.
+- Docker running locally.
+- Terraform installed.
+- `uv` installed.
+- `GRID_S3_BUCKET` and `GRID_S3_PREFIX` set in `.env`.
+- Parsed Grid artifacts already present, or `GRID_DOCS_DIR` plus parser API keys if you want this workflow to parse documents too.
+
+On macOS, install the local CLIs with:
+
+```bash
+brew install awscli
+brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
+brew install uv
+```
+
+Install and start Docker Desktop separately:
+
+```bash
+open -a Docker
+```
+
+Then verify the required commands are on `PATH`:
+
+```bash
+aws --version
+terraform -version
+docker --version
+uv --version
+```
+
+Recommended one-command path when `.grid_artifacts/manifest.jsonl` already
+exists:
+
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+set -a
+source .env
+set +a
+
+python3 scripts/build_colqwen2_visual_retriever.py \
+  --artifact-bucket "$GRID_S3_BUCKET" \
+  --artifact-prefix "$GRID_S3_PREFIX" \
+  --endpoint-name "${COLQWEN2_ENDPOINT_NAME:-grid-agent-core-colqwen2}" \
+  --model-name "${COLQWEN2_MODEL_NAME:-vidore/colqwen2-v1.0}" \
+  --instance-type ml.g5.xlarge
+```
+
+The orchestrator streams progress to the terminal and also writes a persistent
+log under `logs/colqwen2_visual_retriever_<deployment-id>.log`. Use
+`--log-file logs/my-colqwen2-run.log` when you want a stable path to re-inspect.
+The SageMaker service defaults to `--max-visual-tokens 384`, uses a CUDA
+12-compatible inference AMI on `ml.g5.xlarge`, and the indexer automatically
+splits a batch if SageMaker reports a real-time response timeout.
+
+To also parse source PDFs before building the visual index, add `--parse-documents`.
+This can call LlamaParse and VLM enrichment, so use it only when you intend to
+pay for and wait on parsing:
+
+```bash
+python3 scripts/build_colqwen2_visual_retriever.py \
+  --artifact-bucket "$GRID_S3_BUCKET" \
+  --artifact-prefix "$GRID_S3_PREFIX" \
+  --endpoint-name "${COLQWEN2_ENDPOINT_NAME:-grid-agent-core-colqwen2}" \
+  --model-name "${COLQWEN2_MODEL_NAME:-vidore/colqwen2-v1.0}" \
+  --parse-documents \
+  --source-dir "$GRID_DOCS_DIR" \
+  --multimodal-enrich
+```
+
+To deploy AgentCore after the ColQwen2 index is built and uploaded, add
+`--deploy-agentcore`. This assumes vector/PageIndex artifacts required by
+`scripts/deploy_grid_agentcore.py` are already present:
+
+```bash
+python3 scripts/build_colqwen2_visual_retriever.py \
+  --artifact-bucket "$GRID_S3_BUCKET" \
+  --artifact-prefix "$GRID_S3_PREFIX" \
+  --endpoint-name "${COLQWEN2_ENDPOINT_NAME:-grid-agent-core-colqwen2}" \
+  --model-name "${COLQWEN2_MODEL_NAME:-vidore/colqwen2-v1.0}" \
+  --deploy-agentcore
+```
+
+The orchestrator does these steps:
+
+1. Runs Terraform in `infra/colqwen2_sagemaker/` with `create_endpoint=false`
+   to create or verify ECR, the SageMaker execution role, and optional S3.
+2. Builds `app/GridAgentCore/colqwen2_service/Dockerfile`.
+3. Pushes the image to ECR.
+4. Runs Terraform again with `create_endpoint=true` and the pushed image URI to
+   create/update the SageMaker Model, EndpointConfig, and real-time Endpoint.
+5. Runs `uv sync --extra build --extra dev`.
+6. Optionally runs `grid-parse-documents` when `--parse-documents` is set.
+7. Runs `grid-build-indexes --methods colqwen2`.
+8. Runs `grid-upload-artifacts`.
+9. Optionally runs `scripts/deploy_grid_agentcore.py` when `--deploy-agentcore`
+   is set.
+
+If you want Terraform to create the S3 artifact bucket instead of using an
+existing bucket, add `--create-artifact-bucket`. Do not use
+`--force-destroy-artifact-bucket` unless this is a disposable test bucket.
+
+The script prints these exports at the end; keep them in `.env` for future
+index builds and AgentCore deployments:
+
+```bash
+export COLQWEN2_ENDPOINT_NAME=grid-agent-core-colqwen2
+export COLQWEN2_MODEL_NAME=vidore/colqwen2-v1.0
+export GRID_S3_BUCKET=...
+export GRID_S3_PREFIX=...
+```
+
+### Manual Terraform Path
+
+The same workflow can be run manually. Phase 1 creates the infrastructure that
+does not need an image URI yet:
+
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+set -a
+source .env
+set +a
+
+cd infra/colqwen2_sagemaker
+terraform init
+terraform apply \
+  -var "region=$AWS_REGION" \
+  -var "artifact_bucket_name=$GRID_S3_BUCKET" \
+  -var "artifact_prefix=$GRID_S3_PREFIX" \
+  -var "create_endpoint=false"
+
+ECR_REPO=$(terraform output -raw ecr_repository_url)
+```
+
+Build and push the ColQwen2 service image:
+
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+TAG=$(date -u +%Y%m%d%H%M%S)
+REGISTRY="${ECR_REPO%%/*}"
+
+aws ecr get-login-password --region "$AWS_REGION" \
+  | docker login --username AWS --password-stdin "$REGISTRY"
+
+docker build --platform linux/amd64 \
+  -t "grid-agent-core-colqwen2:$TAG" \
+  app/GridAgentCore/colqwen2_service
+
+docker tag "grid-agent-core-colqwen2:$TAG" "$ECR_REPO:$TAG"
+docker push "$ECR_REPO:$TAG"
+```
+
+Phase 2 deploys the SageMaker endpoint from that ECR image:
+
+```bash
+cd infra/colqwen2_sagemaker
+terraform apply \
+  -var "region=$AWS_REGION" \
+  -var "artifact_bucket_name=$GRID_S3_BUCKET" \
+  -var "artifact_prefix=$GRID_S3_PREFIX" \
+  -var "create_endpoint=true" \
+  -var "container_image_uri=$ECR_REPO:$TAG" \
+  -var "deployment_id=$TAG" \
+  -var "endpoint_name=${COLQWEN2_ENDPOINT_NAME:-grid-agent-core-colqwen2}" \
+  -var "model_name=${COLQWEN2_MODEL_NAME:-vidore/colqwen2-v1.0}"
+
+export COLQWEN2_ENDPOINT_NAME=$(terraform output -raw sagemaker_endpoint_name)
+export COLQWEN2_MODEL_NAME="${COLQWEN2_MODEL_NAME:-vidore/colqwen2-v1.0}"
+```
+
+Build the local multi-vector visual index:
+
+```bash
+cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+
+python3 scripts/build_colqwen2_index.py \
+  --artifact-dir .grid_artifacts \
+  --endpoint-name "$COLQWEN2_ENDPOINT_NAME" \
+  --model-name "$COLQWEN2_MODEL_NAME"
+```
+
+Equivalent package CLI:
+
+```bash
+cd app/GridAgentCore
+uv run grid-build-indexes \
+  --artifact-dir ../../.grid_artifacts \
+  --methods colqwen2
+```
+
+The index build script:
+
+- reads `.grid_artifacts/manifest.jsonl`;
+- renders each raw PDF page with PyMuPDF/Pillow at `COLQWEN2_IMAGE_DPI`;
+- sends page JPEG bytes to the SageMaker endpoint in `COLQWEN2_INDEX_BATCH_SIZE` batches;
+- stores one `.npy` multi-vector matrix per page under `.grid_artifacts/indexes/colqwen2/embeddings/`;
+- stores full-page JPEGs under `.grid_artifacts/colqwen2_pages/`;
+- writes `.grid_artifacts/indexes/colqwen2/index.json`.
+
+Upload the ColQwen2 index artifacts with the rest of the Grid runtime
+artifacts:
+
+```bash
+cd app/GridAgentCore
+
+uv run grid-upload-artifacts \
+  --artifact-dir ../../.grid_artifacts \
+  --bucket "$GRID_S3_BUCKET" \
+  --prefix "$GRID_S3_PREFIX"
+
+cd ../..
+```
+
+Verify the uploaded visual index:
+
+```bash
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/colqwen2/index.json"
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/colqwen2/embeddings/" --recursive | head
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/colqwen2_pages/" --recursive | head
+```
+
+At query time, `colqwen2_search` calls the same SageMaker endpoint only for the
+query embedding. The runtime loads stored page matrices from S3-downloaded
+artifacts, computes local MaxSim late-interaction scores, returns top pages,
+attaches the rendered page image, and includes parsed page text for citations.
+
 ### One Command For All Indexes
 
 ```bash
@@ -367,13 +676,16 @@ uv sync --extra build --extra dev --extra graphrag
 
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \
-  --methods vector,pageindex,graphrag,colivara \
+  --methods vector,pageindex,graphrag,colivara,colqwen2 \
   --vector-provider voyage \
   --chunk-strategy semantic \
   --search-strategy hybrid
 ```
 
-Do not include `find` in index builds. Exact find searches the parsed corpus directly at retrieval time and has no index artifact.
+Only include `colqwen2` after the SageMaker endpoint is deployed and
+`COLQWEN2_ENDPOINT_NAME` is set. Do not include `find` in index builds. Exact
+find searches the parsed corpus directly at retrieval time and has no index
+artifact.
 
 ### Resume And Rebuild
 
@@ -392,9 +704,15 @@ test -f ../../.grid_artifacts/indexes/pageindex/index.json
 test -f ../../.grid_artifacts/indexes/pageindex/config.json
 test -d ../../.grid_artifacts/graphrag_data/graph_index/graphrag_ms/output
 test -f ../../.grid_artifacts/indexes/colivara/index.json
+test -f ../../.grid_artifacts/indexes/colqwen2/index.json
+find ../../.grid_artifacts/indexes/colqwen2/embeddings -name '*.npy' | head
 ```
 
-For a first deployed MVP, vector and PageIndex are enough. Add GraphRAG after the output directory exists and runtime dependencies are configured. Add ColiVara after the collection sync succeeds and `COLIVARA_API_KEY` is available to the local or deployed runtime.
+For a first deployed MVP, vector and PageIndex are enough. Add GraphRAG after the
+output directory exists and runtime dependencies are configured. Add ColiVara
+after the collection sync succeeds and `COLIVARA_API_KEY` is available to the
+local or deployed runtime. Add AWS ColQwen2 after the SageMaker endpoint is
+InService and the ColQwen2 index exists locally and in S3.
 
 ## Figure And Image Workflow
 
@@ -417,6 +735,7 @@ Indexes are text-first:
 - Vector embeds semantic chunks of parsed corpus text. If a chunk contains a figure-context block, the figure description and Markdown image path are part of the embedded text.
 - PageIndex indexes virtual page/tree node text. If a virtual page contains a figure-context block, the node summary and retrieval span can include that description.
 - GraphRAG builds text units, entities, relationships, and communities from parsed corpus text. Figure descriptions can influence text units/entities, but image bytes are not stored in the graph.
+- AWS ColQwen2 renders and embeds full PDF page images. It stores page JPEGs and per-page multi-vector `.npy` matrices, then maps visual page hits back to parsed page text for citations.
 
 The actual image crop is linked after retrieval through the manifest. Index nodes store or recover text spans; they do not store image bytes.
 
@@ -467,7 +786,7 @@ uv run grid-upload-artifacts \
   --prefix "$GRID_S3_PREFIX"
 ```
 
-The upload includes raw PDFs, source metadata, manifest, artifact revision, parse metadata, corpus text, figure images, ColiVara sync metadata, and index directories. It intentionally skips `parse_resume_cache/` and legacy `parse/` caches.
+The upload includes raw PDFs, source metadata, manifest, artifact revision, parse metadata, corpus text, figure images, ColiVara sync metadata, AWS ColQwen2 page images/embeddings, and index directories. It intentionally skips `parse_resume_cache/` and legacy `parse/` caches.
 
 Verify:
 
@@ -476,6 +795,8 @@ aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/manifest.jsonl"
 aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/vector/index.json"
 aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/pageindex/index.json"
 aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/colivara/index.json"
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/indexes/colqwen2/index.json"
+aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/colqwen2_pages/" --recursive | head
 aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/figures/" --recursive | head
 ```
 
@@ -496,15 +817,18 @@ python3 scripts/deploy_grid_agentcore.py
 
 The script performs the deploy preflight and runtime wiring:
 
-- Reads `.env` and requires `AWS_REGION`, AWS credentials, `ANTHROPIC_MODEL`, `GRID_S3_BUCKET`, `GRID_S3_PREFIX`, `VOYAGE_API_KEY`, and `COLIVARA_API_KEY`.
+- Reads `.env` and requires `AWS_REGION`, AWS credentials, `ANTHROPIC_MODEL`, `GRID_S3_BUCKET`, `GRID_S3_PREFIX`, and `VOYAGE_API_KEY`.
 - Verifies local parsed artifacts and vector/PageIndex indexes under `.grid_artifacts/`.
-- Creates or updates the Secrets Manager secrets `grid-agent-core/voyage-api-key` and `grid-agent-core/colivara-api-key`.
+- If `COLQWEN2_ENDPOINT_NAME` is set, verifies `.grid_artifacts/indexes/colqwen2/index.json` exists.
+- Creates or updates the Secrets Manager secret `grid-agent-core/voyage-api-key`, plus `grid-agent-core/colivara-api-key` only when `COLIVARA_API_KEY` is set.
 - Updates `agentcore/agentcore.json` so runtime env vars match `.env`.
 - Sets `GRID_ARTIFACT_DIR=/tmp/grid-agent-core/artifacts` for the remote AgentCore Linux runtime.
-- Sets `VOYAGE_API_KEY={{resolve:secretsmanager:grid-agent-core/voyage-api-key}}` and `COLIVARA_API_KEY={{resolve:secretsmanager:grid-agent-core/colivara-api-key}}` so plaintext keys are not written to the repo.
+- Sets API keys with Secrets Manager dynamic references so plaintext keys are not written to the repo.
+- Sets `COLQWEN2_ENDPOINT_NAME`, `COLQWEN2_MODEL_NAME`, and `COLQWEN2_IMAGE_DPI` when the self-hosted visual retriever is configured.
 - Verifies required objects exist under `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX`.
 - Runs `agentcore validate`, `agentcore deploy --dry-run`, `agentcore deploy -y`, and `agentcore status`.
 - Attaches `s3:ListBucket` and `s3:GetObject` access for the artifact prefix to the deployed GridAgentCore runtime role.
+- If `COLQWEN2_ENDPOINT_NAME` is set, also attaches `sagemaker:InvokeEndpoint` for that endpoint.
 - Prints the frontend commands for testing the deployed runtime through the local API proxy.
 
 To run the same checks without deploying:
@@ -577,6 +901,31 @@ aws iam put-role-policy \
   --policy-document file:///tmp/grid-agent-artifacts-read-policy.json
 ```
 
+If you enable AWS ColQwen2 and deploy manually, also allow the runtime role to
+invoke the SageMaker endpoint:
+
+```bash
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+cat > /tmp/grid-agent-colqwen2-invoke-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sagemaker:InvokeEndpoint",
+      "Resource": "arn:aws:sagemaker:$AWS_REGION:$ACCOUNT_ID:endpoint/$COLQWEN2_ENDPOINT_NAME"
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy \
+  --role-name "$ROLE_NAME" \
+  --policy-name GridAgentColQwen2Invoke \
+  --policy-document file:///tmp/grid-agent-colqwen2-invoke-policy.json
+```
+
 ## Invoke And Test Deployed Runtime
 
 CLI payload:
@@ -600,7 +949,7 @@ import boto3
 
 payload = {
     "prompt": "What does Gate 2 readiness require? Cite sources.",
-    "methods": ["vector", "pageindex", "colivara", "find"],
+    "methods": ["vector", "pageindex", "colivara", "colqwen2", "find"],
     "enable_subagents": True,
     "allow_sdk_file_tools": False,
 }
@@ -651,7 +1000,7 @@ Payload shape:
 ```json
 {
   "prompt": "What does Gate 2 readiness require?",
-  "methods": ["vector", "pageindex", "graphrag", "colivara", "find"],
+  "methods": ["vector", "pageindex", "graphrag", "colivara", "colqwen2", "find"],
   "allow_sdk_file_tools": false,
   "enable_subagents": true
 }
@@ -786,7 +1135,7 @@ Request body:
 ```json
 {
   "prompt": "What does Gate 2 readiness require?",
-  "methods": ["vector", "pageindex", "colivara", "find"],
+  "methods": ["vector", "pageindex", "colivara", "colqwen2", "find"],
   "allow_sdk_file_tools": false,
   "enable_subagents": true,
   "runtime_session_id": "optional-stable-session-id"
@@ -875,9 +1224,9 @@ It streams the same NDJSON events as the React UI, plus:
 
 - **Live / Retrieval Map / Answer / Trajectory** tabs.
 - **Run history** — every completed run is auto-saved to S3 under `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/runs/` (full record at `runs/<id>.json`, summary list at `runs/index.json`, capped at 200) and is reloadable from the **Saved runs** dropdown. Because it is S3-backed, history is durable and shared across machines.
-- **View by method** — split the Retrieval Map by retrieval method: see all methods at once, or isolate one of `vector` / `pageindex` / `find`.
+- **View by method** — split the Retrieval Map by retrieval method: see all methods at once, or isolate one of `vector` / `pageindex` / `graphrag` / `colivara` / `colqwen2` / `find`.
 
-`graphrag` and `colivara` are auto-disabled in the method picker unless their indexes/configuration are present. Cited figure crops and local ColiVara page-result images are served over HTTP from `/artifacts/` during local runs.
+`graphrag`, `colivara`, and `colqwen2` are auto-disabled in the method picker unless their indexes/configuration are present. Cited figure crops, local ColiVara page-result images, and local ColQwen2 page renders are served over HTTP from `/artifacts/` during local runs.
 
 ## How The Agent Works Internally
 
@@ -895,7 +1244,7 @@ It streams the same NDJSON events as the React UI, plus:
 - AgentCore Runtime provides isolated sessions. Preserve `runtimeSessionId` for multi-turn continuity; use a new session ID for independent questions.
 - This MVP uses immutable S3 artifact prefixes. Rebuild indexes into a new prefix for safer production updates, then redeploy or update runtime env vars to point at the new prefix.
 - Runtime artifact download is lazy: the first request downloads artifacts to `/tmp/grid-agent-core/artifacts`. Larger artifacts increase cold-start latency.
-- Keep `networkMode` as `PUBLIC` while the runtime only needs Bedrock, S3, and outbound HTTPS to ColiVara for vector/PageIndex/find/ColiVara.
+- Keep `networkMode` as `PUBLIC` while the runtime only needs Bedrock, S3, SageMaker Runtime, and outbound HTTPS to ColiVara for vector/PageIndex/find/ColiVara/AWS ColQwen2.
 - Move to VPC only for private dependencies.
 - Move from S3 download-on-start to mounted filesystems/EFS only if artifact size, cold-start time, or concurrent download pressure requires it.
 - Keep runtime IAM read-only for artifacts. Build and upload permissions should stay with local/deployment users, not the runtime role.
@@ -914,6 +1263,11 @@ Runtime:
 - `COLIVARA_API_KEY` - required when the `colivara` retrieval method is enabled; the deploy helper stores it in Secrets Manager and writes a dynamic reference to `agentcore/agentcore.json`.
 - `COLIVARA_COLLECTION_NAME` - ColiVara collection containing synced Grid PDFs. Defaults to `grid-agent-core`.
 - `COLIVARA_API_BASE_URL` - ColiVara API base URL. Defaults to `https://api.colivara.com`.
+- `COLQWEN2_ENDPOINT_NAME` - required when the `colqwen2` retrieval method is enabled; the deploy helper writes it to `agentcore/agentcore.json`.
+- `COLQWEN2_MODEL_NAME` - model hosted by the endpoint. Defaults to `vidore/colqwen2-v1.0`.
+- `COLQWEN2_IMAGE_DPI` - PDF page render DPI used for ColQwen2 indexing. Defaults to `144`.
+- `COLQWEN2_INDEX_BATCH_SIZE` - page images per SageMaker request while building the ColQwen2 index. Defaults to `2`; timed-out batches are retried as smaller batches.
+- `COLQWEN2_MAX_VISUAL_TOKENS` - SageMaker service visual-token cap set by the deployment helper. Defaults to `384`; lower it if single-page image calls still approach SageMaker's response timeout.
 
 Local proxy/frontend forwarding:
 
@@ -975,14 +1329,27 @@ GraphRAG:
 - `GRID_GRAPHRAG_EMBED_MODEL`
 - `GRID_GRAPHRAG_QUERY_TIMEOUT_SECONDS`
 
+AWS ColQwen2 index/deploy:
+
+- `COLQWEN2_ENDPOINT_NAME`
+- `COLQWEN2_MODEL_NAME`
+- `COLQWEN2_IMAGE_DPI`
+- `COLQWEN2_INDEX_BATCH_SIZE`
+- `COLQWEN2_MAX_VISUAL_TOKENS`
+- `COLQWEN2_INDEX_DTYPE`
+- `COLQWEN2_PAGE_JPEG_QUALITY`
+- `SAGEMAKER_EXECUTION_ROLE_ARN` - only needed for the lower-level `scripts/deploy_colqwen2_sagemaker.py`; the Terraform stack creates the role used by the primary workflow.
+
 ## IAM Permissions
 
 Local/deploy caller:
 
 - AgentCore/CDK deployment permissions.
 - CloudFormation, IAM role/policy, S3 asset, and CloudWatch Logs permissions required by the AgentCore CLI.
+- ECR repository/image permissions and SageMaker Model/EndpointConfig/Endpoint permissions when deploying the ColQwen2 endpoint.
 - `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` for the selected Claude Sonnet model.
 - S3 read/write to `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/*`.
+- `sagemaker:InvokeEndpoint` on `COLQWEN2_ENDPOINT_NAME` when building ColQwen2 indexes from the local/deploy machine.
 - `bedrock-agentcore:InvokeAgentRuntime` for deployed runtime testing.
 
 Runtime execution role:
@@ -990,6 +1357,7 @@ Runtime execution role:
 - Bedrock invoke permissions for the configured model.
 - `s3:ListBucket` on the artifact bucket with the configured prefix condition.
 - `s3:GetObject` on `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/*`.
+- `sagemaker:InvokeEndpoint` on `COLQWEN2_ENDPOINT_NAME` when the `colqwen2` method is enabled.
 - Secrets Manager dynamic reference resolution for the deployed `VOYAGE_API_KEY` value is handled by CloudFormation during deployment.
 
 ## Verification

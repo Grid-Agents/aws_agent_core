@@ -34,6 +34,7 @@ describe("Grid Agents UI", () => {
               { id: "pageindex", ready: true },
               { id: "graphrag", ready: false },
               { id: "colivara", ready: true },
+              { id: "colqwen2", ready: true },
               { id: "find", ready: true },
             ],
           }),

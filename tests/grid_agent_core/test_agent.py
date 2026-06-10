@@ -45,6 +45,7 @@ def test_normalize_methods_defaults_and_validates() -> None:
     assert normalize_methods(None) == ["vector", "pageindex", "find"]
     assert normalize_methods(["graphrag"]) == ["graphrag"]
     assert normalize_methods(["colivara"]) == ["colivara"]
+    assert normalize_methods(["colqwen2"]) == ["colqwen2"]
     try:
         normalize_methods(["bad"])
     except ValueError as exc:

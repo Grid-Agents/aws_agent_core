@@ -94,6 +94,16 @@ def ensure_artifact_files() -> None:
         )
 
 
+def ensure_optional_visual_artifacts(env: dict[str, str]) -> None:
+    if env.get("COLQWEN2_ENDPOINT_NAME") and not (
+        REPO_ROOT / ".grid_artifacts" / "indexes" / "colqwen2" / "index.json"
+    ).exists():
+        raise SystemExit(
+            "COLQWEN2_ENDPOINT_NAME is set, but .grid_artifacts/indexes/colqwen2/index.json "
+            "is missing. Build it with `python3 scripts/build_colqwen2_index.py` first."
+        )
+
+
 def ensure_api_secret(env: dict[str, str], *, env_name: str, secret_name: str, required_message: str) -> None:
     key = env.get(env_name, "")
     if not key:
@@ -169,6 +179,10 @@ def set_runtime_env(env_vars: list[dict[str, str]], name: str, value: str) -> No
     env_vars.append({"name": name, "value": value})
 
 
+def unset_runtime_env(env_vars: list[dict[str, str]], name: str) -> None:
+    env_vars[:] = [item for item in env_vars if item.get("name") != name]
+
+
 def update_agentcore_json(
     env: dict[str, str],
     *,
@@ -189,9 +203,20 @@ def update_agentcore_json(
     set_runtime_env(env_vars, "GRID_S3_BUCKET", env["GRID_S3_BUCKET"])
     set_runtime_env(env_vars, "GRID_S3_PREFIX", env["GRID_S3_PREFIX"].strip("/"))
     set_runtime_env(env_vars, "VOYAGE_API_KEY", f"{{{{resolve:secretsmanager:{voyage_secret_name}}}}}")
-    set_runtime_env(env_vars, "COLIVARA_API_KEY", f"{{{{resolve:secretsmanager:{colivara_secret_name}}}}}")
-    set_runtime_env(env_vars, "COLIVARA_COLLECTION_NAME", env.get("COLIVARA_COLLECTION_NAME", "grid-agent-core"))
-    set_runtime_env(env_vars, "COLIVARA_API_BASE_URL", env.get("COLIVARA_API_BASE_URL", "https://api.colivara.com"))
+    if env.get("COLIVARA_API_KEY"):
+        set_runtime_env(env_vars, "COLIVARA_API_KEY", f"{{{{resolve:secretsmanager:{colivara_secret_name}}}}}")
+        set_runtime_env(env_vars, "COLIVARA_COLLECTION_NAME", env.get("COLIVARA_COLLECTION_NAME", "grid-agent-core"))
+        set_runtime_env(env_vars, "COLIVARA_API_BASE_URL", env.get("COLIVARA_API_BASE_URL", "https://api.colivara.com"))
+    else:
+        unset_runtime_env(env_vars, "COLIVARA_API_KEY")
+    if env.get("COLQWEN2_ENDPOINT_NAME"):
+        set_runtime_env(env_vars, "COLQWEN2_ENDPOINT_NAME", env["COLQWEN2_ENDPOINT_NAME"])
+        set_runtime_env(env_vars, "COLQWEN2_MODEL_NAME", env.get("COLQWEN2_MODEL_NAME", "vidore/colqwen2-v1.0"))
+        set_runtime_env(env_vars, "COLQWEN2_IMAGE_DPI", env.get("COLQWEN2_IMAGE_DPI", "144"))
+    else:
+        unset_runtime_env(env_vars, "COLQWEN2_ENDPOINT_NAME")
+        unset_runtime_env(env_vars, "COLQWEN2_MODEL_NAME")
+        unset_runtime_env(env_vars, "COLQWEN2_IMAGE_DPI")
 
     AGENTCORE_JSON.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
@@ -205,6 +230,8 @@ def verify_s3_artifacts(env: dict[str, str]) -> None:
         "indexes/pageindex/index.json",
         "indexes/pageindex/config.json",
     ]
+    if env.get("COLQWEN2_ENDPOINT_NAME"):
+        required.append("indexes/colqwen2/index.json")
     for rel in required:
         run(["aws", "s3", "ls", f"{base}/{rel}"], env=env, timeout=AWS_HELPER_TIMEOUT_SECONDS)
 
@@ -348,7 +375,30 @@ def deploy(env: dict[str, str], *, target: str, dry_run_only: bool) -> None:
     run(["agentcore", "status"], env=env)
 
 
-def attach_s3_policy(env: dict[str, str], target: str) -> None:
+def _aws_account_id(env: dict[str, str]) -> str:
+    result = subprocess.run(
+        [
+            "aws",
+            "sts",
+            "get-caller-identity",
+            "--query",
+            "Account",
+            "--output",
+            "text",
+            "--region",
+            env["AWS_REGION"],
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=AWS_HELPER_TIMEOUT_SECONDS,
+    )
+    return result.stdout.strip()
+
+
+def attach_runtime_policy(env: dict[str, str], target: str) -> None:
     if not DEPLOYED_STATE_JSON.exists():
         raise SystemExit(f"Missing deployed state: {DEPLOYED_STATE_JSON}")
     state = json.loads(DEPLOYED_STATE_JSON.read_text(encoding="utf-8"))
@@ -381,6 +431,19 @@ def attach_s3_policy(env: dict[str, str], target: str) -> None:
             },
         ],
     }
+    endpoint_name = env.get("COLQWEN2_ENDPOINT_NAME", "").strip()
+    if endpoint_name:
+        account_id = _aws_account_id(env)
+        policy["Statement"].append(
+            {
+                "Effect": "Allow",
+                "Action": "sagemaker:InvokeEndpoint",
+                "Resource": (
+                    f"arn:aws:sagemaker:{env['AWS_REGION']}:{account_id}:"
+                    f"endpoint/{endpoint_name}"
+                ),
+            }
+        )
 
     temp_path = ""
     try:
@@ -395,7 +458,7 @@ def attach_s3_policy(env: dict[str, str], target: str) -> None:
                 "--role-name",
                 role_name,
                 "--policy-name",
-                "GridAgentArtifactsRead",
+                "GridAgentRuntimeAccess",
                 "--policy-document",
                 f"file://{temp_path}",
             ],
@@ -444,23 +507,24 @@ def main() -> None:
             "GRID_S3_BUCKET",
             "GRID_S3_PREFIX",
             "VOYAGE_API_KEY",
-            "COLIVARA_API_KEY",
         ],
     )
 
     ensure_artifact_files()
+    ensure_optional_visual_artifacts(env)
     ensure_api_secret(
         env,
         env_name="VOYAGE_API_KEY",
         secret_name=args.voyage_secret_name,
         required_message="VOYAGE_API_KEY is required because the vector index uses Voyage.",
     )
-    ensure_api_secret(
-        env,
-        env_name="COLIVARA_API_KEY",
-        secret_name=args.colivara_secret_name,
-        required_message="COLIVARA_API_KEY is required for ColiVara visual retrieval.",
-    )
+    if env.get("COLIVARA_API_KEY"):
+        ensure_api_secret(
+            env,
+            env_name="COLIVARA_API_KEY",
+            secret_name=args.colivara_secret_name,
+            required_message="COLIVARA_API_KEY is required for ColiVara visual retrieval.",
+        )
     update_agentcore_json(
         env,
         voyage_secret_name=args.voyage_secret_name,
@@ -470,7 +534,7 @@ def main() -> None:
         verify_s3_artifacts(env)
     deploy(env, target=args.target, dry_run_only=args.dry_run_only)
     if not args.dry_run_only:
-        attach_s3_policy(env, args.target)
+        attach_runtime_policy(env, args.target)
         print_frontend_instructions(args.target)
 
 

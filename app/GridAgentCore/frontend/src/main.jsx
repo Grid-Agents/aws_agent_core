@@ -7,6 +7,7 @@ const TOOL_LABELS = {
   pageindex: "PageIndex",
   graphrag: "GraphRAG",
   colivara: "Visual (ColiVara)",
+  colqwen2: "Visual (AWS ColQwen2)",
   find: "Exact find",
 };
 

@@ -86,6 +86,10 @@ def _search_tool_description(method: str) -> str:
             "ColiVara visual page retrieval over Grid PDFs using multi-vector late interaction; "
             "evidence may include full-page image blocks."
         ),
+        "colqwen2": (
+            "Self-hosted AWS ColQwen2 visual page retrieval over Grid PDFs using "
+            "page-image multi-vector embeddings; evidence may include full-page image blocks."
+        ),
         "find": "Exact keyword and phrase search across Grid text; evidence may include optional figure metadata.",
     }[method]
 

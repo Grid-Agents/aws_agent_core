@@ -633,6 +633,16 @@ def build_all(
             rebuild=rebuild_indexes,
             show_progress=show_progress,
         )
+    if "colqwen2" in selected:
+        from .colqwen2 import build_colqwen2_index
+
+        print("Building AWS ColQwen2 visual multi-vector index...")
+        build_colqwen2_index(
+            artifact_dir,
+            resume=resume,
+            rebuild=rebuild_indexes,
+            show_progress=show_progress,
+        )
     print(f"Grid index build finished in {time.time() - start:.1f}s")
 
 
@@ -714,7 +724,7 @@ def main() -> None:
         rebuild_indexes = True
         print("Treating --force as --rebuild-indexes during indexing.")
     methods = []
-    valid_methods = {"vector", "pageindex", "graphrag", "colivara"}
+    valid_methods = {"vector", "pageindex", "graphrag", "colivara", "colqwen2"}
     for item in args.methods.split(","):
         method = item.strip()
         if not method:

@@ -24,7 +24,8 @@ packaged with infrastructure/configuration for AWS AgentCore.
 - The sibling `claude_agent` project is the reference for agentic search,
   vector retrieval, PageIndex retrieval, GraphRAG retrieval, Claude Agent SDK
   tools, subagents, and trajectory UI behavior. ColiVara adds the hosted visual
-  retrieval path for page-image search. You can copy and adapt useful local code
+  retrieval path and AWS ColQwen2 adds the self-hosted visual path for page-image
+  search. You can copy and adapt useful local code
   directly from the sibling project when it applies.
 
 ## Interpretation
@@ -53,7 +54,7 @@ User
   -> Python app entrypoint
   -> Claude Agent SDK root agent
   -> retrieval tools and Claude Agent SDK enabled tools and subagents
-  -> Grid raw documents, vector/PageIndex/GraphRAG indexes, and ColiVara visual index
+  -> Grid raw documents, vector/PageIndex/GraphRAG indexes, and visual indexes
   -> Claude Sonnet on Amazon Bedrock
   -> cited answer plus observable trajectory
 ```
@@ -89,6 +90,7 @@ User
   - official PageIndex index
   - GraphRAG index
   - ColiVara visual page index, synced through the ColiVara API
+  - AWS ColQwen2 visual page index, built from self-hosted SageMaker embeddings
 - Vector and PageIndex builds cache per-document parts and skip fresh final
   indexes by artifact revision. Re-run the same command to resume after a
   failure; use `--rebuild-indexes` for final output rebuilds and `--no-resume`
@@ -108,6 +110,7 @@ uv run grid-parse-documents --parser llamaparse-agentic --force
 uv run grid-build-indexes --methods vector,pageindex
 uv run grid-build-indexes --methods graphrag
 uv run grid-build-indexes --methods colivara
+uv run grid-build-indexes --methods colqwen2
 ```
 
 The `pageindex` method is wired to the sibling
@@ -127,6 +130,12 @@ writes local sync metadata to `indexes/colivara/index.json`. Runtime
 visual hits back to parsed Grid page text, page images, and citation-ready
 evidence.
 
+AWS ColQwen2 visual retrieval deploys a custom SageMaker endpoint for official
+ColQwen2 page/query multi-vector embeddings. Index build renders Grid PDF pages,
+stores per-page `.npy` embedding matrices and page JPEGs, and runtime
+`colqwen2_search` embeds the query through SageMaker then scores locally with
+late-interaction MaxSim.
+
 ### Agent and Tools
 
 - Adapt the useful retrieval behavior from `claude_agent`:
@@ -134,6 +143,7 @@ evidence.
   - `pageindex_search`
   - `graphrag_search`
   - `colivara_search`
+  - `colqwen2_search`
   - exact keyword/find search
   - Claude Agent SDK retrieval/inspection tools when safely scoped
   - focused subagent support, especially a span/document retrieval subagent
@@ -148,7 +158,7 @@ Agent payload:
 ```json
 {
   "prompt": "Question text",
-  "methods": ["vector", "pageindex", "graphrag", "colivara", "find"],
+  "methods": ["vector", "pageindex", "graphrag", "colivara", "colqwen2", "find"],
   "allow_sdk_file_tools": false,
   "enable_subagents": true
 }

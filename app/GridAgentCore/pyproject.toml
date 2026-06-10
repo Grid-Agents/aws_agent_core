@@ -41,6 +41,7 @@ graphrag = [
 [project.scripts]
 grid-parse-documents = "grid_agent_core.corpus:main"
 grid-build-indexes = "grid_agent_core.build_indexes:main"
+grid-build-colqwen2-index = "grid_agent_core.colqwen2:main"
 grid-upload-artifacts = "grid_agent_core.upload_artifacts:main"
 grid-local-api = "grid_agent_core.local_api:main"
 
