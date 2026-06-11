@@ -15,12 +15,6 @@ dependencies = [
     "python-dotenv>=1.0.1,<2",
     "tqdm>=4.66,<5",
     "voyageai>=0.3.7,<1",
-    # GraphRAG (Microsoft) for the graphrag_ms retrieval method. Pinned <3 (worker targets
-    # the 2.x API). Python-scoped: the deployed runtime is PYTHON_3_12 — CodeZip installs
-    # wheels-only, and graphrag's numpy<2 constraint (via graspologic) has no cp313+ wheels,
-    # so 3.12 is the newest runtime it can package for. The local worker venv (3.12/3.13)
-    # is also covered; the main local env is 3.14 (no spacy cp314 wheels) and skips it.
-    "graphrag>=2.7,<3; python_full_version >= '3.12' and python_full_version < '3.14'",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +33,13 @@ build = [
 dev = [
     "httpx>=0.27,<1",
     "pytest>=8.0,<9",
+]
+graphrag = [
+    # GraphRAG is optional because its graspologic dependency pins numpy<2,
+    # while voyageai needs numpy>=2.1 on Python 3.13+. Keep it in a Python
+    # 3.12 worker environment and point GRID_GRAPHRAG_PYTHON at that interpreter
+    # if the main app runs on a different Python version.
+    "graphrag>=2.7,<3; python_full_version >= '3.12' and python_full_version < '3.13'",
 ]
 
 [project.scripts]

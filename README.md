@@ -341,14 +341,14 @@ set -a
 source ../../.env
 set +a
 
-uv sync --extra build --extra dev --extra graphrag
+uv sync --python 3.12 --extra build --extra dev --extra graphrag
 
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \
   --methods graphrag
 ```
 
-GraphRAG is slower and more dependency-heavy than vector/PageIndex. It requires `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY` for the local worker. The current runtime GraphRAG retrieval path also invokes the worker at query time, so only enable the `graphrag` retrieval method in AgentCore after the deployed package and runtime environment include GraphRAG dependencies and required API keys. For the fastest MVP, deploy `vector,pageindex,find` first.
+GraphRAG is slower and more dependency-heavy than vector/PageIndex. It is an optional extra because its dependency tree currently conflicts with the default Voyage dependency on Python 3.13+. Use a Python 3.12 environment for GraphRAG builds and queries, or set `GRID_GRAPHRAG_PYTHON` to a Python 3.12 interpreter with the `graphrag` extra installed. It requires `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY` for the local worker. The current runtime GraphRAG retrieval path also invokes the worker at query time, so only enable the `graphrag` retrieval method in AgentCore after the deployed package and runtime environment include GraphRAG dependencies and required API keys. For the fastest MVP, deploy `vector,pageindex,find` first.
 
 ### ColiVara Visual Retrieval
 
@@ -726,7 +726,7 @@ the top 4 pages of a ColQwen2 search and text-only evidence for the rest.
 ### One Command For All Indexes
 
 ```bash
-uv sync --extra build --extra dev --extra graphrag
+uv sync --python 3.12 --extra build --extra dev --extra graphrag
 
 uv run grid-build-indexes \
   --artifact-dir ../../.grid_artifacts \

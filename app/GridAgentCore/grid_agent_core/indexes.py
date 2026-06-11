@@ -477,7 +477,10 @@ def build_graphrag_index(artifact_dir: Path, *, rebuild: bool = False, show_prog
     if missing:
         raise RuntimeError(
             "GraphRAG Python dependencies are missing in this project environment: "
-            f"{', '.join(missing)}. Run `uv sync --extra graphrag` in app/GridAgentCore, "
+            f"{', '.join(missing)}. GraphRAG is optional and currently supported "
+            "through a Python 3.12 worker environment. Run "
+            "`uv sync --python 3.12 --extra graphrag` in app/GridAgentCore, or set "
+            "GRID_GRAPHRAG_PYTHON to a Python 3.12 interpreter with GraphRAG installed, "
             "then retry `uv run grid-build-indexes --methods graphrag`."
         )
     index_root = data_dir / "graph_index"
