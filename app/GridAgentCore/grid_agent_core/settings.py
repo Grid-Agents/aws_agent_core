@@ -6,7 +6,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 APP_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_GRID_DOCS_DIR = Path("/Users/maoxunhuang/Desktop/GridAgents/Grid Docs")
+DEFAULT_GRID_DOCS_DIR = PROJECT_ROOT / "Grid Docs"
 DEFAULT_ARTIFACT_DIR = PROJECT_ROOT / ".grid_artifacts"
 DEFAULT_MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 DEFAULT_BATCH_MODEL = "claude-3-5-haiku-20241022"

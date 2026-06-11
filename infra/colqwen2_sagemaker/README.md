@@ -18,7 +18,7 @@ python3 scripts/build_colqwen2_visual_retriever.py
 Manual two-phase flow:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 set -a
 source .env
 set +a
@@ -39,7 +39,7 @@ ECR_REPO=$(terraform output -raw ecr_repository_url)
 Build and push the image:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 TAG=$(date -u +%Y%m%d%H%M%S)
 REGISTRY="${ECR_REPO%%/*}"
 
