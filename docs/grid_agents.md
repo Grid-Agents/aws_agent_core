@@ -16,7 +16,7 @@ packaged with infrastructure/configuration for AWS AgentCore.
 - The simple chatbot AgentCore demo is complete.
 - `docs/simple_agent_core.md` remains the baseline reference.
 - `app/GridAgentCore/` now contains the Grid document agent runtime,
-  corpus/index CLIs, local API, and frontend.
+  corpus/index CLIs, local API, and the self-contained `/ui` console.
 - The local API streams local Grid session events by default and forwards to
   deployed AgentCore when `AGENTCORE_RUNTIME_ARN` is configured.
 - `README.md` documents setup, local runs, index builds, S3 upload, deployment,

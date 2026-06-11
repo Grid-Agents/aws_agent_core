@@ -39,6 +39,9 @@
   .ask{border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:26px 0 16px;background:var(--bg)}
   textarea{width:100%;min-height:64px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-family:var(--sans);font-size:16px;color:var(--ink);resize:vertical;background:var(--bg)}
   textarea:focus{outline:none;border-color:var(--ink)}
+  .samples{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .sample{border:1px solid var(--line);background:var(--bg-2);border-radius:999px;padding:6px 11px;font-family:inherit;font-size:12.5px;color:var(--ink-2);cursor:pointer}
+  .sample:hover{border-color:var(--ink);color:var(--ink)}
   .controls{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:14px}
   .methods{display:flex;gap:8px;flex-wrap:wrap}
   .mtog{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;user-select:none;background:var(--bg)}
@@ -152,6 +155,7 @@
   .ev .span{margin-top:7px;font-size:13px;color:var(--ink-2);max-height:78px;overflow:auto;border-left:2px solid var(--line);padding-left:10px;white-space:pre-wrap}
   .figs{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
   .fig{width:150px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .fig a{display:block;color:inherit;text-decoration:none}
   .fig img{width:100%;display:block;background:#fff;border-bottom:1px solid var(--line-2)}
   .fig .cap{padding:6px 8px;font-size:10.5px;color:var(--mut)}
   .fig .cap b{color:var(--ink)}
@@ -208,6 +212,8 @@
   .answer h3{font-size:17px}
   .answer code{background:var(--bg-2);border:1px solid var(--line-2);padding:1px 5px;border-radius:5px;font-family:var(--mono);font-size:13px}
   .answer strong{font-weight:700}
+  .answer img{display:block;max-width:100%;height:auto;margin:14px 0;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .answer .missing-figure{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--mut);font-size:13px;text-decoration:none;background:var(--bg-2)}
   .citerow{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 0}
   .citepill{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:4px 11px}
   .citepill b{font-family:var(--mono)}
@@ -227,7 +233,25 @@
   .tev.error{border-left-color:#c4314b}
   .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--ink);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}
   @keyframes s{to{transform:rotate(360deg)}}
-  @media(max-width:760px){.pipe{grid-template-columns:1fr 1fr;border:0;gap:8px}.stage{border-radius:10px!important;border:1px solid var(--line)!important}.stage .arrow{display:none}}
+  @media(max-width:760px){
+    .wrap{padding:0 16px}
+    header.bar .wrap{height:auto;min-height:60px;align-items:flex-start;flex-wrap:wrap;padding-top:10px;padding-bottom:10px}
+    .brand{min-width:0;line-height:1.25}
+    .bar .spacer{display:none}
+    .ovchips{width:100%;gap:6px}
+    .ovchip{font-size:11px;padding:3px 8px}
+    .ask{margin-top:18px;padding:16px}
+    .run{margin-left:0}
+    .tabsrow{align-items:flex-start}
+    .histwrap{width:100%;justify-content:flex-start}
+    .histsel{min-width:0;max-width:100%;flex:1}
+    .pipe{grid-template-columns:1fr 1fr;border:0;gap:8px}
+    .stage{border-radius:10px!important;border:1px solid var(--line)!important}
+    .stage .arrow{display:none}
+    .ev{grid-template-columns:1fr}
+    .r1x{padding-left:15px}
+    .answer{max-width:100%;padding:8px 16px 18px}
+  }
 </style>
 </head>
 <body>
@@ -243,7 +267,8 @@
 <div class="wrap">
   <div class="ask">
     <div class="lbl" style="margin-bottom:9px">Ask the grounded agent</div>
-    <textarea id="prompt">What does the NETS Security and Quality of Supply Standards (SQSS) require for transmission network design? Cite your sources.</textarea>
+    <textarea id="prompt">Using Figure CC.A.3.1 and its adjacent table/text, explain how the minimum frequency response requirement changes from DMOL through 100% registered capacity. Identify the dynamic operating zone, MG, the plant-dependent parts, and the required Primary/Secondary versus High response values at the key loading points. Cite the sources and include the relevant figure.</textarea>
+    <div class="samples" id="samples"></div>
     <div class="controls">
       <div class="methods" id="methods">
         <label class="mtog on" style="--m:var(--vector)"><input type="checkbox" value="vector" checked><span class="dot"></span>vector</label>
@@ -308,6 +333,39 @@ const el = (t,c,html)=>{const e=document.createElement(t); if(c)e.className=c; i
 const esc = s => String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const METHOD_COLORS = {vector:"var(--vector)",pageindex:"var(--pageindex)",find:"var(--find)",graphrag:"var(--graphrag)",colivara:"var(--colivara)",colqwen2:"var(--colqwen2)"};
 const shortDoc = id => String(id).replace(/^grid\//,"").replace(/\.txt$/,"");
+const SAMPLE_QUESTIONS = [
+  {
+    label: "Frequency profile",
+    text: "Using Figure CC.A.3.1 and its adjacent table/text, explain how the minimum frequency response requirement changes from DMOL through 100% registered capacity. Identify the dynamic operating zone, MG, the plant-dependent parts, and the required Primary/Secondary versus High response values at the key loading points. Cite the sources and include the relevant figure."
+  },
+  {
+    label: "Primary vs secondary",
+    text: "Compare Figure CC.A.3.2 with the adjacent interpretation table: for a -0.5 Hz frequency change, what happens by 10 seconds, 30 seconds, and 30 minutes, and how should P and S be interpreted from the plot rather than just the table? Cite the sources and include the relevant figure."
+  },
+  {
+    label: "High response",
+    text: "Use Figure CC.A.3.3 and the adjacent table to explain the high-frequency response requirement for a +0.5 Hz event. What visual evidence shows the expected plant response direction by 10 seconds, and how does H relate to the sustained response after the frequency change? Cite the sources and include the relevant figure."
+  },
+  {
+    label: "Fault ride through",
+    text: "Use Figure CC.A.4A.1(a), the one-line diagram, the voltage/time curve, and the surrounding CC.A.4A scope text to explain the fault ride-through example for a Supergrid Voltage short-circuit fault cleared in less than 140 ms. Include the 0 ms, 80 ms, 120 ms, and 90% recovery points, and state which equipment/classes the appendix says this illustration applies to. Cite the sources and include the relevant figure."
+  },
+  {
+    label: "Cross-figure audit",
+    text: "Across Figures CC.A.3.1, CC.A.3.2, CC.A.3.3, and CC.A.4A.1(a), separate requirements that must be read from chart geometry from facts available in the surrounding text/tables. For each figure, name the key axes, thresholds, and operational meaning, then cite the evidence and include any figures used."
+  }
+];
+
+function renderSamples(){
+  const box=$("#samples"); if(!box) return;
+  box.innerHTML="";
+  SAMPLE_QUESTIONS.forEach(q=>{
+    const btn=el("button","sample",esc(q.label));
+    btn.type="button"; btn.title=q.text;
+    btn.addEventListener("click",()=>{$("#prompt").value=q.text; $("#prompt").focus();});
+    box.append(btn);
+  });
+}
 
 // ---- tabs ----
 $("#tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-v]");if(!b)return;
@@ -391,10 +449,90 @@ function addTraj(en){
 }
 
 // ---- final-state: retrieval postmortem ----
+function cleanPath(v){
+  return String(v==null?"":v).trim().replace(/^\.?\//,"").replace(/^\/+/,"");
+}
+function basename(v){
+  const clean=cleanPath(v).split(/[?#]/)[0];
+  try{return decodeURIComponent(clean.split("/").pop()||"").toLowerCase();}catch{return (clean.split("/").pop()||"").toLowerCase();}
+}
+function artifactSrc(path){
+  const raw=String(path==null?"":path).trim();
+  if(!raw) return "";
+  if(/^(https?:|data:|blob:)/i.test(raw)) return raw;
+  if(raw.startsWith(API+"/artifacts/")) return raw;
+  if(raw.startsWith("/artifacts/")) return API+raw;
+  let clean=cleanPath(raw);
+  ["/.grid_artifacts/","/smoke_artifacts/llamaparse-after/"].forEach(marker=>{
+    const idx=clean.indexOf(marker.slice(1));
+    if(idx>=0) clean=clean.slice(idx+marker.length-1);
+  });
+  const figIdx=clean.indexOf("figures/");
+  if(figIdx>=0) clean=clean.slice(figIdx);
+  return API+"/artifacts/"+clean;
+}
+function figurePath(f){
+  return String((f&&f.image_path)||"").trim();
+}
+function figureImageSrc(f){
+  const path=figurePath(f);
+  return path ? artifactSrc(path) : "";
+}
+function collectFigures(r, citedOnly=false){
+  const seen=new Set(), out=[];
+  const collect=e=>{
+    const figs=((e&&e.metadata)||{}).figures;
+    if(!Array.isArray(figs)) return;
+    figs.forEach(f=>{
+      if(!f||typeof f!=="object") return;
+      const key=figurePath(f)||f.filename||f.figure_id||f.local_path||f.s3_uri;
+      if(!key||seen.has(key)) return;
+      seen.add(key); out.push(f);
+    });
+  };
+  (r.citations||[]).forEach(collect);
+  if(!citedOnly) (r.evidence||[]).forEach(collect);
+  return out;
+}
+function figureLookup(r){
+  const m=new Map();
+  collectFigures(r).forEach(f=>{
+    const path=figurePath(f);
+    if(!path) return;
+    [f.image_path,f.filename,f.local_path,f.s3_uri,f.figure_id].forEach(v=>{
+      if(!v) return;
+      m.set(cleanPath(v).toLowerCase(), path);
+      const b=basename(v); if(b) m.set(b,path);
+    });
+  });
+  return m;
+}
+function resolveFigureSrc(src, lookup){
+  const raw=String(src||"").trim();
+  if(!raw) return "";
+  const direct=lookup.get(cleanPath(raw).toLowerCase())||lookup.get(basename(raw));
+  return direct ? artifactSrc(direct) : artifactSrc(raw);
+}
+function hydrateAnswerImages(container,r){
+  const lookup=figureLookup(r);
+  container.querySelectorAll("img").forEach(img=>{
+    const raw=img.getAttribute("src")||"";
+    const src=resolveFigureSrc(raw,lookup);
+    if(!src) return;
+    img.loading="lazy"; img.decoding="async";
+    img.onerror=()=>{
+      const link=el("a","missing-figure",`Figure image unavailable: ${esc(img.alt||raw)}`);
+      link.href=src; link.target="_blank"; link.rel="noreferrer";
+      img.replaceWith(link);
+    };
+    img.src=src;
+  });
+}
 function figEls(figs){
   const fw=el("div","figs");
   figs.forEach(f=>{ const fc=el("div","fig");
-    if(f.image_path){const img=el("img");img.loading="lazy";img.src=API+"/artifacts/"+f.image_path;img.onerror=()=>img.remove();fc.append(img);}
+    const src=figureImageSrc(f);
+    if(src){const link=el("a");link.href=src;link.target="_blank";link.rel="noreferrer";const img=el("img");img.loading="lazy";img.decoding="async";img.onerror=()=>link.remove();img.src=src;link.append(img);fc.append(link);}
     fc.append(el("div","cap",`<b>${esc(f.figure_id||"figure")}</b> · p${f.page??"?"}<br>${esc(String(f.description||"").slice(0,120))}`));
     fw.append(fc);
   });
@@ -532,7 +670,13 @@ function renderAnswer(r){
   if(errs.length) b.append(el("div","errbox","<b>errors:</b> "+esc(errs.join(" | "))));
   const a=el("div","answer");
   try{ a.innerHTML = window.marked?marked.parse(r.answer||""):"<pre>"+esc(r.answer)+"</pre>"; }catch{ a.textContent=r.answer||""; }
+  hydrateAnswerImages(a,r);
   b.append(a);
+  const citedFigs=collectFigures(r,true);
+  if(citedFigs.length){
+    b.append(el("div","lbl",`Cited figures (${citedFigs.length})`));
+    b.append(figEls(citedFigs));
+  }
   if((r.citations||[]).length){
     const cr=el("div","citerow");
     r.citations.forEach(c=>cr.append(el("span","citepill",`<b>${esc(c.id)}</b> · ${esc(c.artifact_source)} · ${esc(shortDoc(c.document_id))} p${c.page??"?"}`)));
@@ -638,6 +782,7 @@ function loadRunRecord(rec){
 }
 $("#history").addEventListener("change",()=>{ const id=$("#history").value; if(id) loadRunById(id); });
 
+renderSamples();
 loadOverview();
 refreshHistory();
 </script>

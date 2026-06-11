@@ -1,6 +1,6 @@
 # Grid AgentCore
 
-AWS Bedrock AgentCore application for asking cited questions over Grid documents. The repo keeps the completed `app/SimpleAgentCore/` chatbot baseline and adds `app/GridAgentCore/` for parsed Grid artifacts, vector/PageIndex/GraphRAG/ColiVara/AWS ColQwen2 retrieval, Claude Agent SDK tools/subagents, S3 artifact deployment, and a React trajectory UI.
+AWS Bedrock AgentCore application for asking cited questions over Grid documents. The repo keeps the completed `app/SimpleAgentCore/` chatbot baseline and adds `app/GridAgentCore/` for parsed Grid artifacts, vector/PageIndex/GraphRAG/ColiVara/AWS ColQwen2 retrieval, Claude Agent SDK tools/subagents, S3 artifact deployment, and a single-page `/ui` trajectory console.
 
 The app exposes observable agent events: root-agent text, tool calls, retrieval results, subagent calls, selected citations, latency, metadata, and errors. It does not expose hidden model chain-of-thought.
 
@@ -105,8 +105,8 @@ Runtime model calls use Amazon Bedrock through IAM. Parse-time VLM enrichment, V
 - `app/GridAgentCore/grid_agent_core/graphrag/` - rlm-eval-style GraphRAG worker protocol, canonical chunks, metadata, and worker.
 - `app/GridAgentCore/grid_agent_core/retrieval.py` - retrieval repository and figure attachment logic.
 - `app/GridAgentCore/grid_agent_core/upload_artifacts.py` - S3 artifact upload CLI.
-- `app/GridAgentCore/grid_agent_core/local_api.py` - FastAPI NDJSON proxy for frontend and deployed runtime.
-- `app/GridAgentCore/frontend/` - Vite React Grid QA UI.
+- `app/GridAgentCore/grid_agent_core/local_api.py` - FastAPI NDJSON proxy, `/ui` console host, artifact image server, and deployed runtime proxy.
+- `app/GridAgentCore/test_ui/index.html` - self-contained Grid QA console served at `/ui/`.
 - `scripts/deploy_grid_agentcore.py` - deployment helper for GridAgentCore runtime config, secret setup, deploy, and S3 role policy.
 - `scripts/build_colqwen2_visual_retriever.py` - end-to-end ColQwen2 visual retriever orchestrator: Terraform, Docker/ECR, SageMaker, index build, S3 upload, optional AgentCore deploy.
 - `scripts/deploy_colqwen2_sagemaker.py` - builds/pushes the ColQwen2 container and creates or updates a SageMaker endpoint.
@@ -127,11 +127,7 @@ cp .env.example .env
 cd app/GridAgentCore
 uv sync --extra build --extra dev
 
-cd frontend
-npm install
-
-cd ../../..
-npm install --prefix agentcore/cdk
+cd ../..
 npm install -g @aws/agentcore
 ```
 
@@ -1066,8 +1062,6 @@ Payload shape:
 
 ## Run The Frontend
 
-Terminal 1:
-
 ```bash
 cd app/GridAgentCore
 set -a
@@ -1078,35 +1072,29 @@ export AGENTCORE_RUNTIME_QUALIFIER=
 uv run grid-local-api --port 8000
 ```
 
-Terminal 2:
-
-```bash
-cd app/GridAgentCore/frontend
-npm run dev
-```
-
-Open `http://127.0.0.1:5173`.
+Open `http://127.0.0.1:8000/ui/`. The root `/` redirects there.
 
 The local API forwards `/api/grid/run` to the deployed AgentCore runtime when
 `AGENTCORE_RUNTIME_ARN` is set. The UI posts the same payload, streams NDJSON
 events, and displays the answer, citations, root-agent turns, retrieval calls,
 separate subagent threads, latency, and errors. Each trajectory turn is
-expandable; root-agent and subagent-owned turns are labeled separately. When
-cited evidence has attached figures, the source snippet card shows figure IDs
-and S3/local artifact links.
+expandable; root-agent and subagent-owned turns are labeled separately. Cited
+figure crops, local ColiVara page-result images, and local ColQwen2 page renders
+are served over HTTP from `/artifacts/` and rendered in the Retrieval Map and
+Answer tabs.
 
-### How The Frontend Connects To Deployed AgentCore
+### How The `/ui` Console Connects To Deployed AgentCore
 
-The React frontend does not call AWS directly. It talks to the local FastAPI
+The browser console does not call AWS directly. It is served by the local FastAPI
 proxy in `grid_agent_core/local_api.py`.
 
 ```text
-Browser frontend
+Browser /ui console
   -> POST /api/grid/run on local FastAPI
   -> boto3 bedrock-agentcore.invoke_agent_runtime
   -> deployed GridAgentCore runtime
   -> streamed NDJSON trace/result events
-  -> frontend trajectory, citations, and answer
+  -> trajectory, citations, figures, and answer
 ```
 
 The switch between local execution and deployed execution is controlled by
@@ -1151,8 +1139,9 @@ credentials.
 - **FastAPI proxy / local API** - the local Python server started by
   `uv run grid-local-api --port 8000`. It gives the browser a simple HTTP API
   and hides AWS credentials from frontend JavaScript.
-- **Vite frontend** - the local React development server started by
-  `npm run dev`. It serves the browser UI at `http://127.0.0.1:5173`.
+- **`/ui` console** - the self-contained page at
+  `app/GridAgentCore/test_ui/index.html`, served by `grid-local-api` at
+  `http://127.0.0.1:8000/ui/`.
 - **NDJSON** - newline-delimited JSON. The server sends one JSON object per
   line, so the frontend can render events as they arrive instead of waiting for
   one large final JSON response.
@@ -1176,10 +1165,9 @@ credentials.
   They are required by the local proxy and AWS CLI, but should never be exposed
   to frontend browser code.
 
-### Connect Another Frontend
+### API Contract
 
-Build another frontend by using the same local/API-server contract. The frontend
-should call:
+The `/ui` console uses this local API contract:
 
 ```http
 POST http://127.0.0.1:8000/api/grid/run
@@ -1217,7 +1205,7 @@ Important event fields:
 - `trace.entry.metadata.parent_tool_use_id` links explicit subagent child turns
   to a root `subagent-call`.
 - Some deployed SDK streams omit `parent_tool_use_id` on subagent retrieval
-  tool events. The current React UI groups retrieval/tool/inspect events after a
+  tool events. The `/ui` console groups retrieval/tool/inspect events after a
   `subagent-call` and before the next root-agent text turn as subagent-managed
   activity.
 - `result.answer` is the final cited answer.
@@ -1227,10 +1215,6 @@ Important event fields:
 Do not label this as hidden model chain-of-thought. The stream exposes
 observable agent events: user prompt, root-agent text, subagent calls, tool
 requests, retrieval results, citations, latency, and errors.
-
-For a browser app hosted somewhere other than `127.0.0.1:5173` or
-`localhost:5173`, add that origin to the CORS allow list in
-`grid_agent_core/local_api.py`.
 
 ### Troubleshoot A Blank Run
 
@@ -1262,9 +1246,9 @@ If clicking **Run** appears to do nothing:
    wrong `AGENTCORE_RUNTIME_ARN`, wrong region, or a runtime import/configuration
    failure.
 
-## Test Console (single page, no build)
+## Test Console Details
 
-`grid-local-api` also serves a self-contained test console — a single static page at `app/GridAgentCore/test_ui/index.html`. No `npm` build is required: just start the API and open the page.
+`grid-local-api` serves the self-contained test console from `app/GridAgentCore/test_ui/index.html`. No `npm` build is required: just start the API and open the page.
 
 ```bash
 cd app/GridAgentCore
@@ -1276,9 +1260,10 @@ uv run grid-local-api --port 8000
 
 Open **`http://127.0.0.1:8000/ui/`** (the root `/` also redirects there).
 
-It streams the same NDJSON events as the React UI, plus:
+It streams NDJSON events and provides:
 
 - **Live / Retrieval Map / Answer / Trajectory** tabs.
+- **Visual test prompts** for the figure-heavy Grid Code pages in the local smoke corpus.
 - **Run history** — every completed run is auto-saved to S3 under `s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/runs/` (full record at `runs/<id>.json`, summary list at `runs/index.json`, capped at 200) and is reloadable from the **Saved runs** dropdown. Because it is S3-backed, history is durable and shared across machines.
 - **View by method** — split the Retrieval Map by retrieval method: see all methods at once, or isolate one of `vector` / `pageindex` / `graphrag` / `colivara` / `colqwen2` / `find`.
 
@@ -1424,10 +1409,6 @@ Do not run full Grid index builds unless you intend to pay for and wait on them.
 cd app/GridAgentCore
 uv run pytest
 python3 -m py_compile main.py local_chat.py grid_agent_core/*.py grid_agent_core/graphrag/*.py grid_agent_core/rag_compat/*.py
-
-cd frontend
-npm test
-npm run build
 
 cd ../../SimpleAgentCore
 uv run pytest
