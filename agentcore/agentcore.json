@@ -13,7 +13,7 @@
       "build": "CodeZip",
       "entrypoint": "main.py",
       "codeLocation": "app/GridAgentCore/",
-      "runtimeVersion": "PYTHON_3_13",
+      "runtimeVersion": "PYTHON_3_12",
       "networkMode": "PUBLIC",
       "protocol": "HTTP",
       "instrumentation": {

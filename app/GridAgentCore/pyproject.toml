@@ -16,10 +16,11 @@ dependencies = [
     "tqdm>=4.66,<5",
     "voyageai>=0.3.7,<1",
     # GraphRAG (Microsoft) for the graphrag_ms retrieval method. Pinned <3 (worker targets
-    # the 2.x API). Scoped to Python 3.13 only: the deployed runtime is built on 3.13 (so
-    # CodeZip installs it) and the local worker venv is 3.13; the main local env is 3.14,
-    # where graphrag's spacy has no cp314 wheels, so it is correctly skipped there.
-    "graphrag>=2.7,<3; python_full_version >= '3.13' and python_full_version < '3.14'",
+    # the 2.x API). Python-scoped: the deployed runtime is PYTHON_3_12 — CodeZip installs
+    # wheels-only, and graphrag's numpy<2 constraint (via graspologic) has no cp313+ wheels,
+    # so 3.12 is the newest runtime it can package for. The local worker venv (3.12/3.13)
+    # is also covered; the main local env is 3.14 (no spacy cp314 wheels) and skips it.
+    "graphrag>=2.7,<3; python_full_version >= '3.12' and python_full_version < '3.14'",
 ]
 
 [project.optional-dependencies]

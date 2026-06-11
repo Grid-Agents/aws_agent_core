@@ -20,7 +20,9 @@ RUNTIME_ARTIFACT_DIR = "/tmp/grid-agent-core/artifacts"
 DEFAULT_VOYAGE_SECRET_NAME = "grid-agent-core/voyage-api-key"
 DEFAULT_COLIVARA_SECRET_NAME = "grid-agent-core/colivara-api-key"
 DEFAULT_ANTHROPIC_SECRET_NAME = "grid-agent-core/anthropic-api-key"
-RUNTIME_PYTHON_VERSION = "PYTHON_3_13"  # graphrag/spacy have no cp314 wheels; runtime is 3.13
+# graphrag needs <3.14 (no spacy cp314 wheels) AND <3.13 for CodeZip's wheels-only install
+# (graphrag->graspologic pins numpy<2, which has no cp313 wheels). 3.12 satisfies both.
+RUNTIME_PYTHON_VERSION = "PYTHON_3_12"
 AWS_HELPER_TIMEOUT_SECONDS = 120
 ASSET_UPLOAD_TIMEOUT_SECONDS = 7200
 AGENTCORE_DEPLOY_TIMEOUT_SECONDS = 3600
