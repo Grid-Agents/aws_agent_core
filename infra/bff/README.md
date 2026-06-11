@@ -9,9 +9,9 @@ compute, so this box is just a thin, cheap proxy.
 
 | | |
 |---|---|
-| Instance | `i-0bab53f191deb352f` (t3.medium, Amazon Linux 2023) |
-| Region / account | `us-east-1` / `218254303724` |
-| Forwards to | `arn:aws:bedrock-agentcore:us-east-1:218254303724:runtime/GridAgentCore_GridAgentCore-j9s7R2FPWR` |
+| Instance | EC2 `t3.medium` by default, Amazon Linux 2023 |
+| Region / account | Your configured AWS account and `var.region` |
+| Forwards to | `var.runtime_arn` |
 | Exposure | **Private** — security group has **no inbound ports**; the app binds `127.0.0.1:8000` |
 | Auth to AWS | IAM **instance role** (no static keys on the box): `InvokeAgentRuntime` + scoped S3 read/write |
 | Service | systemd unit `grid-bff` → `uv run grid-local-api` |
@@ -21,9 +21,9 @@ compute, so this box is just a thin, cheap proxy.
 
 ## Prerequisites (one-time, local)
 
-- **AWS credentials for account `218254303724`.** Either export them, or `source` the repo `.env`:
+- AWS credentials for the account that owns the AgentCore runtime and artifact bucket. Either use an AWS profile/SSO session, export temporary credentials, or source the repo `.env`:
   ```bash
-  set -a; source /Users/kaps/repos/aws_agent_core/.env; set +a
+  set -a; source ../../.env; set +a
   ```
 - **AWS CLI v2**: `brew install awscli`
 - **SSM Session Manager plugin** (needs your sudo password — run it yourself):
@@ -37,7 +37,7 @@ compute, so this box is just a thin, cheap proxy.
 Start an SSM port-forward (no inbound port is opened; the tunnel rides the SSM channel):
 
 ```bash
-aws ssm start-session --region us-east-1 --target i-0bab53f191deb352f \
+aws ssm start-session --region "$AWS_REGION" --target "$(terraform output -raw instance_id)" \
   --document-name AWS-StartPortForwardingSession \
   --parameters '{"portNumber":["8000"],"localPortNumber":["8000"]}'
 ```
@@ -48,7 +48,7 @@ Leave that running, then open **http://localhost:8000/ui/** in your browser.
 ## Access — a shell on the box (ops/debugging)
 
 ```bash
-aws ssm start-session --region us-east-1 --target i-0bab53f191deb352f
+aws ssm start-session --region "$AWS_REGION" --target "$(terraform output -raw instance_id)"
 ```
 
 Useful once on the box (or via `aws ssm send-command`):
@@ -65,8 +65,8 @@ sudo systemctl restart grid-bff     # restart the proxy
 
 **Stop / start to save cost** (it bills ~$30/mo while running; nothing else unless you run queries):
 ```bash
-aws ec2 stop-instances  --region us-east-1 --instance-ids i-0bab53f191deb352f
-aws ec2 start-instances --region us-east-1 --instance-ids i-0bab53f191deb352f
+aws ec2 stop-instances --region "$AWS_REGION" --instance-ids "$(terraform output -raw instance_id)"
+aws ec2 start-instances --region "$AWS_REGION" --instance-ids "$(terraform output -raw instance_id)"
 ```
 > The public IP changes on stop/start. It doesn't matter for SSM access (which targets the
 > instance ID), only for direct-IP access (see below).
@@ -88,13 +88,17 @@ cd infra/bff && terraform destroy
 ## Terraform
 
 ```bash
-set -a; source ../../.env; set +a     # AWS creds for account 218254303724
+set -a; source ../../.env; set +a
 terraform init
 terraform plan
-terraform apply
+terraform apply \
+  -var "region=$AWS_REGION" \
+  -var "runtime_arn=$AGENTCORE_RUNTIME_ARN" \
+  -var "s3_bucket=$GRID_S3_BUCKET" \
+  -var "s3_prefix=$GRID_S3_PREFIX"
 ```
 State is local (`terraform.tfstate`) — do not commit it (it can contain sensitive values).
-Key variables are in `variables.tf` (`runtime_arn`, `s3_bucket`, `instance_type`, `expose_public`).
+Key variables are in `variables.tf` (`runtime_arn`, `s3_bucket`, `s3_prefix`, `instance_type`, `expose_public`).
 
 ## Optional — a direct URL (no tunnel)
 

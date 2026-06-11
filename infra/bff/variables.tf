@@ -13,15 +13,14 @@ variable "instance_type" {
   default = "t3.medium" # thin proxy; AgentCore does the heavy compute. Stoppable to save cost.
 }
 
-# The deployed AgentCore runtime the BFF forwards to (account 218254303724).
 variable "runtime_arn" {
-  type    = string
-  default = "arn:aws:bedrock-agentcore:us-east-1:218254303724:runtime/GridAgentCore_GridAgentCore-j9s7R2FPWR"
+  type        = string
+  description = "Deployed AgentCore runtime ARN that the BFF forwards requests to."
 }
 
 variable "s3_bucket" {
-  type    = string
-  default = "maoxun-grid-agent-artifacts-us-east-1"
+  type        = string
+  description = "S3 bucket containing Grid artifacts and the BFF deploy tarball."
 }
 
 variable "s3_prefix" {

@@ -473,15 +473,17 @@ def attach_runtime_policy(env: dict[str, str], target: str) -> None:
 def print_frontend_instructions(target: str) -> None:
     state = json.loads(DEPLOYED_STATE_JSON.read_text(encoding="utf-8"))
     runtime_arn = state["targets"][target]["resources"]["runtimes"]["GridAgentCore"]["runtimeArn"]
+    app_dir = REPO_ROOT / "app" / "GridAgentCore"
+    frontend_dir = app_dir / "frontend"
     print("\nFrontend test commands:")
     print("Terminal 1:")
-    print("  cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore")
+    print(f"  cd {shlex.quote(str(app_dir))}")
     print("  set -a; source ../../.env; set +a")
     print(f"  export AGENTCORE_RUNTIME_ARN={shlex.quote(runtime_arn)}")
     print("  export AGENTCORE_RUNTIME_QUALIFIER=")
     print("  uv run grid-local-api --port 8000")
     print("\nTerminal 2:")
-    print("  cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore/frontend")
+    print(f"  cd {shlex.quote(str(frontend_dir))}")
     print("  npm run dev")
     print("\nOpen http://127.0.0.1:5173")
 

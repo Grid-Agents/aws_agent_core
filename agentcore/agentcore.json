@@ -4,7 +4,7 @@
   "version": 1,
   "managedBy": "CDK",
   "tags": {
-    "agentcore:created-by": "MaoXun",
+    "agentcore:created-by": "GridAgents",
     "agentcore:project-name": "GridAgentCore"
   },
   "runtimes": [
@@ -38,7 +38,7 @@
         },
         {
           "name": "GRID_S3_BUCKET",
-          "value": "maoxun-grid-agent-artifacts-us-east-1"
+          "value": "replace-with-grid-agent-artifact-bucket"
         },
         {
           "name": "GRID_S3_PREFIX",

@@ -10,14 +10,12 @@ terraform {
 
 provider "aws" {
   region = var.region
-  # Credentials are taken from the environment (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY),
-  # which we export from the repo .env (MaoXun's account 218254303724) before running terraform.
+  # Credentials are taken from the environment, AWS profile, or AWS SSO cache.
   default_tags {
     tags = {
       Project   = "GridAgentCore"
       Component = "bff-proxy"
       ManagedBy = "terraform"
-      Owner     = "kaps"
     }
   }
 }

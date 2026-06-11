@@ -11,7 +11,7 @@ Assumption: you already ran LlamaParse Agentic document parsing with VLM enrichm
 Build the two fastest MVP indexes first:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore
+cd /path/to/aws_agent_core/app/GridAgentCore
 set -a
 source ../../.env
 set +a
@@ -33,7 +33,7 @@ uv run grid-build-indexes \
 
 # Optional self-hosted visual retrieval. From repo root, deploy the SageMaker
 # endpoint once, then build local multi-vector page indexes against it.
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 python3 scripts/deploy_colqwen2_sagemaker.py \
   --execution-role-arn "$SAGEMAKER_EXECUTION_ROLE_ARN" \
   --wait
@@ -56,7 +56,7 @@ uv run grid-upload-artifacts \
 Deploy and invoke:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 
 python3 scripts/deploy_grid_agentcore.py
 
@@ -112,8 +112,9 @@ Runtime model calls use Amazon Bedrock through IAM. Parse-time VLM enrichment, V
 - `scripts/deploy_colqwen2_sagemaker.py` - builds/pushes the ColQwen2 container and creates or updates a SageMaker endpoint.
 - `scripts/build_colqwen2_index.py` - renders Grid PDF pages and builds local ColQwen2 multi-vector index artifacts.
 - `infra/colqwen2_sagemaker/` - Terraform IaC for ECR, optional S3 artifact bucket, SageMaker execution role, SageMaker model/config/endpoint.
+- `agentcore/cdk/` - AgentCore-managed AWS CDK app used by the AgentCore CLI for runtime deployment.
 - `agentcore/agentcore.json` - active AgentCore deployment target for `GridAgentCore`.
-- `agentcore/aws-targets.json` - AWS account/region deployment target.
+- `agentcore/aws-targets.example.json` - portable AWS account/region target template. Copy it to ignored `agentcore/aws-targets.json` and edit it for your account.
 - `app/SimpleAgentCore/` - preserved minimal chatbot baseline.
 
 Generated artifacts live under `.grid_artifacts/` by default and are ignored by git.
@@ -121,8 +122,9 @@ Generated artifacts live under `.grid_artifacts/` by default and are ignored by 
 ## Setup
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 cp .env.example .env
+cp agentcore/aws-targets.example.json agentcore/aws-targets.json
 
 cd app/GridAgentCore
 uv sync --extra build --extra dev
@@ -143,7 +145,7 @@ GRID_ARTIFACT_DIR=.grid_artifacts
 GRID_S3_BUCKET=your-grid-agent-artifact-bucket
 GRID_S3_PREFIX=grid-agent-core
 
-GRID_DOCS_DIR="/Users/maoxunhuang/Desktop/GridAgents/Grid Docs"
+GRID_DOCS_DIR="/path/to/Grid Docs"
 GRID_PARSE_PROVIDER=llamaparse-agentic
 GRID_MULTIMODAL_ENRICH=1
 
@@ -193,7 +195,7 @@ Do not commit `.env`, AWS credentials, or API keys.
 Indexing requires a top-level manifest and revision file. Check the existing subset artifacts:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 test -f .grid_artifacts/manifest.jsonl
 test -f .grid_artifacts/artifact_revision.txt
 find .grid_artifacts/corpus/grid -maxdepth 1 -name '*.txt' -print
@@ -334,7 +336,7 @@ The worker is adapted for the current `graphrag` Python API in this project, but
 Install GraphRAG dependencies and build:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore
+cd /path/to/aws_agent_core/app/GridAgentCore
 set -a
 source ../../.env
 set +a
@@ -358,7 +360,7 @@ indexes when layout, charts, diagrams, or scanned visual cues matter.
 Sync Grid PDFs to a ColiVara collection:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core/app/GridAgentCore
+cd /path/to/aws_agent_core/app/GridAgentCore
 set -a
 source ../../.env
 set +a
@@ -474,7 +476,7 @@ Recommended one-command path when `.grid_artifacts/manifest.jsonl` already
 exists:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 set -a
 source .env
 set +a
@@ -557,7 +559,7 @@ The same workflow can be run manually. Phase 1 creates the infrastructure that
 does not need an image URI yet:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 set -a
 source .env
 set +a
@@ -576,7 +578,7 @@ ECR_REPO=$(terraform output -raw ecr_repository_url)
 Build and push the ColQwen2 service image:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 TAG=$(date -u +%Y%m%d%H%M%S)
 REGISTRY="${ECR_REPO%%/*}"
 
@@ -612,7 +614,7 @@ export COLQWEN2_MODEL_NAME="${COLQWEN2_MODEL_NAME:-vidore/colqwen2-v1.0}"
 Build the local multi-vector visual index:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 
 python3 scripts/build_colqwen2_index.py \
   --artifact-dir .grid_artifacts \
@@ -819,7 +821,7 @@ So the workflow is: figure crop -> VLM description inserted into text -> text is
 Create the bucket once if it does not exist:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 set -a
 source .env
 set +a
@@ -863,7 +865,7 @@ aws s3 ls "s3://$GRID_S3_BUCKET/$GRID_S3_PREFIX/graphrag_data/graph_index/graphr
 Use the deployment helper as the primary path:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 python3 scripts/deploy_grid_agentcore.py
 ```
 
@@ -886,7 +888,7 @@ The script performs the deploy preflight and runtime wiring:
 To run the same checks without deploying:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 python3 scripts/deploy_grid_agentcore.py --dry-run-only
 ```
 
@@ -897,7 +899,7 @@ Some AWS docs and CLI versions use `--plan` for preview, so check
 Manual preflight, if you want to inspect the same inputs:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 set -a
 source .env
 set +a
@@ -914,7 +916,7 @@ Also verify `agentcore/aws-targets.json` uses the AWS account and region where t
 If CDK has not been bootstrapped in the target account/region:
 
 ```bash
-cd /Users/maoxunhuang/Desktop/GridAgents/aws_agent_core
+cd /path/to/aws_agent_core
 set -a
 source .env
 set +a

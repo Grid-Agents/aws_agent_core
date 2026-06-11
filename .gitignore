@@ -15,7 +15,7 @@ agentcore/cdk/dist/
 agentcore/cdk/coverage/
 .cache/
 logs/
-cdk/
+/cdk/
 .grid_artifacts/
 app/GridAgentCore/.venv/
 app/GridAgentCore/*.egg-info/
