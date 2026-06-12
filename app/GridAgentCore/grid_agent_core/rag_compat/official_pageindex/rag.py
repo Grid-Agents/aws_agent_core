@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import hashlib
 import json
+import os
 import re
 from contextlib import contextmanager
 from pathlib import Path
@@ -776,6 +777,23 @@ class OfficialPageIndexRAG:
         return bool(self.cfg.get("record_reasoning_trajectory", True))
 
 
+# The official generate_node_summary() interpolates node['text'] into the prompt with
+# no truncation; on 1000+ page documents a parent node's text can exceed the model's
+# 1M-token request cap (observed: 1,051,469 tokens on the 27-doc Grid corpus). Cap
+# prompts at a size that is far beyond any useful summarisation input but safely under
+# the API limit, keeping the head (section openings carry the signal for summaries).
+_MAX_PROMPT_TOKENS = 150_000
+
+
+def _cap_prompt(prompt: str) -> str:
+    max_chars = _MAX_PROMPT_TOKENS * _CHARS_PER_TOKEN
+    if len(prompt) <= max_chars:
+        return prompt
+    head = prompt[: int(max_chars * 0.9)]
+    tail = prompt[-int(max_chars * 0.1) :]
+    return f"{head}\n\n[... document text truncated for length ...]\n\n{tail}"
+
+
 @contextmanager
 def _patch_official_llm(
     utils_module: Any, llm: Any, usage: Usage
@@ -795,7 +813,7 @@ def _patch_official_llm(
         else:
             response = llm.complete(
                 system="You are building PageIndex document tree summaries.",
-                user=prompt,
+                user=_cap_prompt(prompt),
                 max_tokens=700,
             )
             usage.add(response.usage)
@@ -804,8 +822,17 @@ def _patch_official_llm(
             return text, "finished"
         return text
 
+    # The official builder fires node-summary calls concurrently via asyncio.gather,
+    # but a naive async wrapper over the sync client serializes them (a 465-page doc
+    # took ~2.3h). Run the sync call in worker threads, bounded so a giant document
+    # (200+ gathered tasks) cannot stampede the API rate limits.
+    concurrency = asyncio.Semaphore(
+        int(os.getenv("GRID_PAGEINDEX_SUMMARY_CONCURRENCY", "6"))
+    )
+
     async def llm_acompletion(model: str | None, prompt: str) -> str:
-        value = llm_completion(model, prompt)
+        async with concurrency:
+            value = await asyncio.to_thread(llm_completion, model, prompt)
         if isinstance(value, tuple):
             return value[0]
         return value

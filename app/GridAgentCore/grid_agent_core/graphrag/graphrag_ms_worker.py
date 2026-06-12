@@ -48,6 +48,12 @@ def _build_config(graph_dir: str) -> Any:
         api_base=LLM_BASE_URL,
         max_tokens=1200,
         temperature=0,
+        # Defaults (25 concurrent, 180s timeout) collapse on large corpora: Anthropic
+        # rate-limits, calls queue for up to ~65min, hit the 180s timeout, and retry —
+        # an unbounded retry storm. Fewer in-flight requests + a generous timeout keep
+        # extraction steady; the file cache makes restarts resume, not redo.
+        concurrent_requests=int(os.getenv("GRID_GRAPHRAG_CONCURRENT_REQUESTS", "8")),
+        request_timeout=float(os.getenv("GRID_GRAPHRAG_REQUEST_TIMEOUT", "600")),
     )
     embed_model = LanguageModelConfig(
         type=ModelType.Embedding,
