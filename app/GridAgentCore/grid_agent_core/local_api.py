@@ -194,6 +194,11 @@ if _test_ui_dir.is_dir():
 app.include_router(review_router)
 app.mount("/review-pdfs", StaticFiles(directory=str(REVIEW_SEED_DIR)), name="review-pdfs")
 
+# Pending intake bundles (original attachments) served for the intake viewer.
+_pending_dir = REVIEW_SEED_DIR.parent / "pending"
+_pending_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/intake-pdfs", StaticFiles(directory=str(_pending_dir)), name="intake-pdfs")
+
 
 @app.get("/api/overview")
 async def overview() -> dict[str, Any]:

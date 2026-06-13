@@ -30,6 +30,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .agent import run_grid_agent_events
+from . import intake_store
 
 router = APIRouter(prefix="/api/review", tags=["review"])
 
@@ -128,8 +129,14 @@ def parse_submission(bundle: Path) -> dict[str, Any]:
             else [d.strip() for d in raw_docs.split(",") if d.strip()]
         )
 
+    def _safe_text(pdf: Path) -> str:
+        try:
+            return _extract_text(pdf)
+        except Exception:
+            return ""
+
     documents = [
-        {"name": pdf.name, "text": _extract_text(pdf)}
+        {"name": pdf.name, "text": _safe_text(pdf)}
         for pdf in sorted(bundle.glob("*.pdf"))
         if pdf.name != FORM_FILENAME
     ]
@@ -396,3 +403,38 @@ async def copilot(request: CopilotRequest) -> StreamingResponse:
         "enable_subagents": request.enable_subagents,
         "allow_sdk_file_tools": False,
     })
+
+
+class RejectRequest(BaseModel):
+    reason: str | None = None
+
+
+@router.get("/intake")
+async def list_intake() -> dict[str, Any]:
+    return {"pending": intake_store.list_pending()}
+
+
+@router.get("/intake/{intake_id}")
+async def get_intake(intake_id: str) -> dict[str, Any]:
+    try:
+        return intake_store.load_pending(intake_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown intake: {intake_id}")
+
+
+@router.post("/intake/{intake_id}/accept")
+async def accept_intake(intake_id: str) -> dict[str, Any]:
+    try:
+        project_id = intake_store.accept_pending(intake_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown intake: {intake_id}")
+    return {"project_id": project_id}
+
+
+@router.post("/intake/{intake_id}/reject")
+async def reject_intake(intake_id: str, body: RejectRequest | None = None) -> dict[str, Any]:
+    try:
+        intake_store.reject_pending(intake_id, body.reason if body else None)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown intake: {intake_id}")
+    return {"ok": True}
