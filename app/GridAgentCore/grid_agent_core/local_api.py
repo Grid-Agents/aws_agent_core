@@ -22,6 +22,7 @@ from .agent import run_grid_agent_events
 from .artifacts import artifact_revision, configured_s3_uri, ensure_artifacts, runtime_artifact_dir
 from .review_api import SEED_DIR as REVIEW_SEED_DIR
 from .review_api import router as review_router
+from .intake_gmail import start_intake_poller
 from .corpus import load_manifest
 from .settings import (
     RETRIEVAL_METHODS,
@@ -198,6 +199,11 @@ app.mount("/review-pdfs", StaticFiles(directory=str(REVIEW_SEED_DIR)), name="rev
 _pending_dir = REVIEW_SEED_DIR.parent / "pending"
 _pending_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/intake-pdfs", StaticFiles(directory=str(_pending_dir)), name="intake-pdfs")
+
+
+@app.on_event("startup")
+async def _start_intake() -> None:
+    start_intake_poller()
 
 
 @app.get("/api/overview")

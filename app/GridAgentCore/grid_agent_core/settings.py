@@ -69,3 +69,23 @@ def colqwen2_image_dpi() -> int:
 
 def colqwen2_index_batch_size() -> int:
     return int(os.getenv("COLQWEN2_INDEX_BATCH_SIZE", "2"))
+
+
+def gmail_intake_enabled() -> bool:
+    return os.getenv("GRID_GMAIL_INTAKE", "0").strip() in ("1", "true", "True")
+
+
+def gmail_token_file() -> str:
+    return os.getenv("GRID_GMAIL_TOKEN_FILE", "").strip()
+
+
+def gmail_query() -> str:
+    return os.getenv("GRID_GMAIL_QUERY", "is:unread has:attachment").strip()
+
+
+def gmail_poll_seconds() -> int:
+    return int(os.getenv("GRID_GMAIL_POLL_SECONDS", "45"))
+
+
+def gmail_send_acks() -> bool:
+    return os.getenv("GRID_GMAIL_SEND_ACKS", "0").strip() in ("1", "true", "True")
