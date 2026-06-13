@@ -1,0 +1,19 @@
+import { Navigate, Route, Routes } from "react-router-dom";
+import { TopBar } from "./components/TopBar";
+import { Dashboard } from "./pages/Dashboard";
+import { ProjectPage } from "./pages/ProjectPage";
+
+export default function App() {
+  return (
+    <>
+      <TopBar />
+      <Routes>
+        <Route path="/" element={<Navigate to="/transmission" replace />} />
+        <Route path="/transmission" element={<Dashboard />} />
+        <Route path="/distribution" element={<Dashboard />} />
+        <Route path="/project/:id" element={<ProjectPage />} />
+        <Route path="*" element={<Navigate to="/transmission" replace />} />
+      </Routes>
+    </>
+  );
+}
