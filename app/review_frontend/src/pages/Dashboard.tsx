@@ -1,10 +1,10 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { fetchProjects } from "../api";
+import { fetchIntakeQueue, fetchProjects } from "../api";
 import { TypeChip } from "../components/bits";
 import { useStore } from "../store";
-import type { Level, ProjectSummary } from "../types";
+import type { IntakeSummary, Level, ProjectSummary } from "../types";
 
 const LEVEL_BLURB: Record<Level, string> = {
   transmission:
@@ -18,11 +18,13 @@ export function Dashboard() {
   const level: Level = pathname.startsWith("/distribution") ? "distribution" : "transmission";
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [intake, setIntake] = useState<IntakeSummary[]>([]);
 
   useEffect(() => {
     setProjects(null);
     setErr(null);
     fetchProjects(level).then(setProjects).catch((e) => setErr(String(e)));
+    fetchIntakeQueue().then(setIntake).catch(() => setIntake([]));
   }, [level]);
 
   return (
@@ -32,6 +34,20 @@ export function Dashboard() {
         <h1>{level === "transmission" ? "Transmission" : "Distribution"} connections</h1>
         <p>{LEVEL_BLURB[level]}</p>
       </div>
+
+      {intake.length > 0 && (
+        <div className="intake-panel">
+          <div className="eyebrow">pending intake · {intake.length} awaiting review</div>
+          {intake.map((it) => (
+            <Link className="intake-row" key={it.id} to={`/intake/${encodeURIComponent(it.id)}`}>
+              <span>{it.name || it.subject || "(unnamed)"}</span>
+              <span className="muted">{it.level}/{it.conn_type} · from {it.sender}</span>
+              {it.flag_count > 0 && <span className="chip chip-confidence chip-low">{it.flag_count} flags</span>}
+              {it.status === "extraction_failed" && <span className="chip chip-confidence chip-low">extraction failed</span>}
+            </Link>
+          ))}
+        </div>
+      )}
 
       {err && <div className="empty-state"><div className="big">Cannot reach the review API</div><div>{err}</div></div>}
       {!projects && !err && (

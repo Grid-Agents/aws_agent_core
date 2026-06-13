@@ -488,3 +488,63 @@ button { font-family: inherit; cursor: pointer; }
   .console-body { grid-template-columns: 1fr; }
   .console-list { display: none; }
 }
+
+/* ---- intake queue + detail -------------------------------------------- */
+.muted { color: var(--muted); font-size: 13px; }
+
+/* Pending intake panel on Dashboard */
+.intake-panel {
+  background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm); padding: 14px 18px; margin-bottom: 26px;
+}
+.intake-panel > .eyebrow { margin-bottom: 10px; }
+.intake-row {
+  display: flex; align-items: center; gap: 14px; padding: 10px 0;
+  border-top: 1px dashed var(--line); font-size: 13.5px; flex-wrap: wrap;
+  transition: color 0.15s;
+}
+.intake-row:hover { color: var(--petrol); }
+.intake-row .muted { font-size: 12px; }
+
+/* Confidence chip variants (chip-high / chip-medium / chip-low) */
+.chip-confidence { font-family: var(--mono); }
+.chip-high { color: var(--pass); border-color: #b6d6c3; background: var(--pass-wash); }
+.chip-medium { color: var(--revise); border-color: #e0cda0; background: var(--revise-wash); }
+.chip-low { color: var(--fail); border-color: #e3b6b0; background: var(--fail-wash); }
+
+/* Intake detail page two-column grid */
+.intake-grid {
+  display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start;
+  margin-bottom: 28px;
+}
+@media (max-width: 860px) { .intake-grid { grid-template-columns: 1fr; } }
+
+.intake-col-head {
+  font-family: var(--serif); font-size: 18px; font-weight: 500; margin: 0 0 14px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--line-strong);
+}
+
+/* Extracted section cards on IntakePage */
+.section-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+  padding: 14px 16px; margin-bottom: 12px; box-shadow: var(--shadow-sm);
+}
+.row-between { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 6px; }
+.intake-req { color: var(--muted); font-size: 12px; margin: 4px 0 6px; line-height: 1.5; }
+.intake-submitted { font-size: 14px; line-height: 1.6; margin: 4px 0; }
+.intake-docs { font-family: var(--mono); font-size: 11px; margin-top: 6px; }
+
+/* Attachment links on IntakePage */
+.doc-link {
+  display: block; font-family: var(--mono); font-size: 12px; color: var(--petrol);
+  background: var(--petrol-wash); border: 1px solid #c4d6d3; padding: 8px 12px;
+  border-radius: var(--r); margin-bottom: 8px; word-break: break-all;
+  transition: background 0.15s;
+}
+.doc-link:hover { background: #d4e2df; }
+
+/* Accept / Reject button row */
+.action-bar {
+  display: flex; gap: 12px; padding-top: 20px; border-top: 1px solid var(--line-strong);
+  margin-top: 10px;
+}
