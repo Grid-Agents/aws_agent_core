@@ -61,3 +61,21 @@ def test_get_unknown_intake_404(monkeypatch, tmp_path):
     _seed_pending(monkeypatch, tmp_path)
     client = TestClient(local_api.app)
     assert client.get("/api/review/intake/nope").status_code == 404
+
+
+def test_accept_extraction_failed_returns_409(monkeypatch, tmp_path):
+    """Accepting an extraction_failed record (empty level/conn_type) must give 409, not 404."""
+    monkeypatch.setattr(store, "PENDING_DIR", tmp_path / "pending")
+    monkeypatch.setattr(store, "APPLICATIONS_DIR", tmp_path / "applications")
+    failed_submission = {
+        "id": "", "name": "Unknown", "applicant": "",
+        "level": "", "conn_type": "", "capacity": "", "status": "", "submitted": "",
+        "sections": [], "documents": [],
+        "intake": {"status": "extraction_failed", "level_confidence": "",
+                   "flags": [], "unmapped_docs": []},
+    }
+    store.create_pending("msg-fail", failed_submission, attachments=[],
+                         sender="bad@example.com", subject="Unreadable")
+    client = TestClient(local_api.app)
+    r = client.post("/api/review/intake/msg-fail/accept")
+    assert r.status_code == 409

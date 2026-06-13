@@ -69,6 +69,18 @@ def test_accept_renders_form_and_moves_bundle(tmp_path, monkeypatch):
     assert parsed["sections"][0]["title"] == "Site & location"
 
 
+def test_attachment_filename_preserved_on_disk(tmp_path, monkeypatch):
+    """Attachments with spaces/parens must be written under their original basename."""
+    monkeypatch.setattr(store, "PENDING_DIR", tmp_path / "pending")
+    monkeypatch.setattr(store, "APPLICATIONS_DIR", tmp_path / "applications")
+
+    store.create_pending("msg-4", _submission(),
+                         attachments=[("My Report.pdf", b"%PDF-1.4 fake")],
+                         sender="dev@example.com", subject="Report")
+
+    assert (store.PENDING_DIR / "msg-4" / "My Report.pdf").is_file()
+
+
 def test_reject_archives_pending(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "PENDING_DIR", tmp_path / "pending")
     monkeypatch.setattr(store, "APPLICATIONS_DIR", tmp_path / "applications")

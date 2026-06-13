@@ -426,6 +426,8 @@ async def get_intake(intake_id: str) -> dict[str, Any]:
 async def accept_intake(intake_id: str) -> dict[str, Any]:
     try:
         project_id = intake_store.accept_pending(intake_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Unknown intake: {intake_id}")
     return {"project_id": project_id}

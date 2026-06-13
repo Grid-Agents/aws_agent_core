@@ -37,7 +37,7 @@ def create_pending(intake_id: str, submission: dict[str, Any],
                                        "intake_id": intake_id}}
     (dest / _SUBMISSION_FILE).write_text(json.dumps(record, ensure_ascii=False, indent=2))
     for name, data in attachments:
-        (dest / _safe_id(name)).write_bytes(data)
+        (dest / Path(name).name).write_bytes(data)
     return dest
 
 
@@ -83,6 +83,11 @@ def allocate_project_id(level: str, conn_type: str) -> str:
 def accept_pending(intake_id: str) -> str:
     src = PENDING_DIR / _safe_id(intake_id)
     rec = load_pending(intake_id)
+    if rec.get("level") not in _LEVEL_CODE or rec.get("conn_type") not in _TYPE_CODE:
+        raise ValueError(
+            f"cannot accept intake {intake_id!r}: unresolved classification "
+            f"({rec.get('level')!r}/{rec.get('conn_type')!r}) — reject it instead"
+        )
     project_id = allocate_project_id(rec["level"], rec["conn_type"])
     dest = APPLICATIONS_DIR / project_id
     dest.mkdir(parents=True, exist_ok=True)
