@@ -19,23 +19,13 @@ from pathlib import Path
 SCHEMA_DIR = Path(__file__).resolve().parents[1] / "review_seed" / "schema"
 CONN_TYPES = ("generation", "demand", "storage", "mixed")
 
-# Maps the markdown "## N. <Heading>" to a conn_type id.
-_HEADING_TO_TYPE = {
-    "generation": "generation",
-    "demand": "demand",          # "## 2. Demand (load)"
-    "storage": "storage",
-    "mixed": "mixed",            # "## 4. Mixed / Co-located"
-}
 _HEADING_RE = re.compile(r"^##\s+\d+\.\s+(.*)$")
 _ROW_RE = re.compile(r"^\|(.+)\|\s*$")
 
 
 def _heading_type(heading: str) -> str | None:
     low = heading.lower()
-    for key, ctype in _HEADING_TO_TYPE.items():
-        if low.startswith(key):
-            return ctype
-    return None
+    return next((t for t in CONN_TYPES if low.startswith(t)), None)
 
 
 def _parse_file(path: Path) -> dict[str, list[dict]]:
@@ -87,4 +77,5 @@ def load_schema(level: str, conn_type: str) -> list[dict]:
     by_type = _load_level(level)
     if conn_type not in by_type:
         raise KeyError(f"Unknown connection type for {level}: {conn_type}")
-    return by_type[conn_type]
+    # Copy out of the lru_cache so callers can't mutate the cached list.
+    return list(by_type[conn_type])

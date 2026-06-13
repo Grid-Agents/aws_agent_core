@@ -23,9 +23,21 @@ def test_storage_includes_generation_plus_storage_fields():
     assert "Energy capacity" in sto
 
 
+def test_distribution_generation_parses():
+    cats = load_schema("distribution", "generation")
+    names = [c["category"] for c in cats]
+    assert len(cats) >= 8
+    assert "Applicant" in names   # real row in distribution.md "## 1. Generation"
+
+
 def test_unknown_type_raises():
     with pytest.raises(KeyError):
         load_schema("transmission", "banana")
+
+
+def test_unknown_level_raises():
+    with pytest.raises(KeyError):
+        load_schema("nonexistent", "generation")
 
 
 def test_conn_types_constant():
