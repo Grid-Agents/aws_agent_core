@@ -9,12 +9,17 @@ deterministic and correct. The model is injectable for testing.
 """
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any, Protocol
 
 from .requirements_schema import CONN_TYPES, load_schema
 from .settings import aws_region, model_id
 
+log = logging.getLogger("grid.intake")
+
 _MAX_DOC_CHARS = 6000
+_LEVELS = ("transmission", "distribution")
 
 
 class ModelClient(Protocol):
@@ -80,7 +85,8 @@ def _docs_blob(attachments: list[dict]) -> str:
 
 
 def _slug(category: str, i: int) -> str:
-    base = "".join(ch.lower() if ch.isalnum() else "-" for ch in category).strip("-")
+    base = "".join(ch.lower() if ch.isalnum() else "-" for ch in category)
+    base = re.sub(r"-{2,}", "-", base).strip("-")
     return base or f"s{i}"
 
 
@@ -99,6 +105,11 @@ def extract_submission(attachments: list[dict], body: str,
             user=("Classify this application from its cover email and attached documents.\n\n"
                   f"EMAIL BODY:\n{body.strip() or '(empty)'}\n\nATTACHMENTS:\n{docs_blob}"),
         )
+        if meta.get("level") not in _LEVELS or meta.get("conn_type") not in CONN_TYPES:
+            raise ValueError(
+                f"model returned unknown classification: "
+                f"{meta.get('level')}/{meta.get('conn_type')}"
+            )
         schema = load_schema(meta["level"], meta["conn_type"])
         catalog = "\n".join(f"- {c['category']}: {c['what_submitted']}" for c in schema)
         ext = model.call_tool(
@@ -111,7 +122,39 @@ def extract_submission(attachments: list[dict], body: str,
                   f"category.\n\nREQUIRED CATEGORIES:\n{catalog}\n\n"
                   f"EMAIL BODY:\n{body.strip() or '(empty)'}\n\nATTACHMENTS:\n{docs_blob}"),
         )
+
+        by_cat = {s["category"]: s for s in ext.get("sections", [])}
+        sections = []
+        seen_ids: set[str] = set()
+        for i, cat in enumerate(schema, start=1):
+            got = by_cat.get(cat["category"], {})
+            sec_id = _slug(cat["category"], i)
+            if sec_id in seen_ids:
+                n = 2
+                while f"{sec_id}-{n}" in seen_ids:
+                    n += 1
+                sec_id = f"{sec_id}-{n}"
+            seen_ids.add(sec_id)
+            sections.append({
+                "id": sec_id,
+                "title": cat["category"],
+                "requirement": f"{cat['what_submitted']} Source: {cat['source']}.",
+                "submitted": got.get("submitted", ""),
+                "docs": got.get("docs", []),
+                "confidence": got.get("confidence", "low"),
+            })
+        return {
+            "id": "", "name": meta["name"], "applicant": meta["applicant"],
+            "level": meta["level"], "conn_type": meta["conn_type"],
+            "capacity": meta["capacity"],
+            "status": "", "submitted": "",
+            "sections": sections, "documents": documents,
+            "intake": {"status": "extracted", "level_confidence": meta["level_confidence"],
+                       "flags": ext.get("flags", []),
+                       "unmapped_docs": ext.get("unmapped_docs", [])},
+        }
     except Exception as exc:  # surface as a rejectable pending card, never crash the poller
+        log.warning("intake extraction failed: %s", exc)
         return {
             "id": "", "name": "", "applicant": "", "level": "", "conn_type": "",
             "capacity": "", "status": "", "submitted": "",
@@ -119,24 +162,3 @@ def extract_submission(attachments: list[dict], body: str,
             "intake": {"status": "extraction_failed", "error": f"{type(exc).__name__}: {exc}",
                        "flags": [], "unmapped_docs": [], "level_confidence": "low"},
         }
-
-    by_cat = {s["category"]: s for s in ext.get("sections", [])}
-    sections = []
-    for i, cat in enumerate(schema, start=1):
-        got = by_cat.get(cat["category"], {})
-        sections.append({
-            "id": _slug(cat["category"], i),
-            "title": cat["category"],
-            "requirement": f"{cat['what_submitted']} Source: {cat['source']}.",
-            "submitted": got.get("submitted", ""),
-            "docs": got.get("docs", []),
-            "confidence": got.get("confidence", "low"),
-        })
-    return {
-        "id": "", "name": meta["name"], "applicant": meta["applicant"],
-        "level": meta["level"], "conn_type": meta["conn_type"], "capacity": meta["capacity"],
-        "status": "", "submitted": "",
-        "sections": sections, "documents": documents,
-        "intake": {"status": "extracted", "level_confidence": meta["level_confidence"],
-                   "flags": ext.get("flags", []), "unmapped_docs": ext.get("unmapped_docs", [])},
-    }

@@ -61,3 +61,15 @@ def test_extract_marks_failure_when_classification_raises():
     assert result["intake"]["status"] == "extraction_failed"
     assert result["sections"] == []
     assert result["documents"] == [{"name": "a.pdf"}]
+
+
+def test_extract_marks_failure_on_unknown_classification():
+    model = FakeModel(
+        # call A: classification returns an invalid level the schema can't load
+        {"level": "sub-transmission", "conn_type": "generation", "level_confidence": "high",
+         "name": "Testfield Wind", "applicant": "Testfield Renewables Ltd",
+         "capacity": "300 MW onshore wind"},
+    )
+    result = extract_submission([{"name": "a.pdf", "text": "x"}], body="", model=model)
+    assert result["intake"]["status"] == "extraction_failed"
+    assert result["sections"] == []
