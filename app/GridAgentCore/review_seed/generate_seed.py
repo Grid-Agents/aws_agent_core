@@ -35,7 +35,7 @@ from reportlab.platypus import (
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from seed_data import PROJECTS  # noqa: E402
 
-from grid_agent_core.application_form import render_application_form  # noqa: F401
+from grid_agent_core.application_form import render_application_form
 
 APPLICATIONS_DIR = Path(__file__).resolve().parent / "applications"
 
