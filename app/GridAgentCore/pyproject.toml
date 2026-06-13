@@ -28,6 +28,7 @@ build = [
     "pymupdf>=1.24,<2",
     "pysbd>=0.3.4,<0.4",
     "pypdf>=4,<7",
+    "reportlab>=4,<5",
     "uvicorn[standard]>=0.34,<1",
 ]
 dev = [

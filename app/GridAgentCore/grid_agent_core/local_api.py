@@ -20,6 +20,8 @@ from pydantic import BaseModel, Field
 
 from .agent import run_grid_agent_events
 from .artifacts import artifact_revision, configured_s3_uri, ensure_artifacts, runtime_artifact_dir
+from .review_api import SEED_DIR as REVIEW_SEED_DIR
+from .review_api import router as review_router
 from .corpus import load_manifest
 from .settings import (
     RETRIEVAL_METHODS,
@@ -167,6 +169,11 @@ app.mount("/artifacts", StaticFiles(directory=str(_artifact_root)), name="artifa
 _test_ui_dir = Path(__file__).resolve().parents[1] / "test_ui"
 if _test_ui_dir.is_dir():
     app.mount("/ui", StaticFiles(directory=str(_test_ui_dir), html=True), name="ui")
+
+# Application Review MVP: REST + streaming review/co-pilot endpoints, plus the
+# original submission PDFs served for the in-app document viewer.
+app.include_router(review_router)
+app.mount("/review-pdfs", StaticFiles(directory=str(REVIEW_SEED_DIR)), name="review-pdfs")
 
 
 @app.get("/api/overview")
