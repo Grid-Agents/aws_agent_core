@@ -1,5 +1,5 @@
 import { streamNDJSON } from "./lib/ndjson";
-import type { AgentEvent, Level, ProjectDetail, ProjectSummary } from "./types";
+import type { AgentEvent, IntakeDetail, IntakeSummary, Level, ProjectDetail, ProjectSummary } from "./types";
 
 export async function fetchProjects(level: Level): Promise<ProjectSummary[]> {
   const r = await fetch(`/api/review/projects?level=${level}`);
@@ -66,4 +66,36 @@ export function figureUrl(path?: string): string | null {
 
 export function pdfUrl(projectId: string, doc: string): string {
   return `/review-pdfs/${projectId}/${doc}`;
+}
+
+export async function fetchIntakeQueue(): Promise<IntakeSummary[]> {
+  const r = await fetch(`/api/review/intake`);
+  if (!r.ok) throw new Error(`intake ${r.status}`);
+  return (await r.json()).pending;
+}
+
+export async function fetchIntake(id: string): Promise<IntakeDetail> {
+  const r = await fetch(`/api/review/intake/${encodeURIComponent(id)}`);
+  if (!r.ok) throw new Error(`intake ${r.status}`);
+  return r.json();
+}
+
+export async function acceptIntake(id: string): Promise<string> {
+  const r = await fetch(`/api/review/intake/${encodeURIComponent(id)}/accept`, { method: "POST" });
+  if (!r.ok) throw new Error(`accept ${r.status}`);
+  return (await r.json()).project_id;
+}
+
+export async function rejectIntake(id: string, reason: string): Promise<void> {
+  const r = await fetch(`/api/review/intake/${encodeURIComponent(id)}/reject`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+  if (!r.ok) throw new Error(`reject ${r.status}`);
+}
+
+/** Original attachment PDF for a pending intake (served from review_seed/pending). */
+export function intakePdfUrl(intakeId: string, doc: string): string {
+  return `/intake-pdfs/${encodeURIComponent(intakeId)}/${doc}`;
 }

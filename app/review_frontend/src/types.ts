@@ -109,3 +109,45 @@ export interface LogLine {
   level: LogLevel;
   text: string;
 }
+
+export type Confidence = "high" | "medium" | "low";
+
+export interface IntakeSummary {
+  id: string;
+  name: string;
+  applicant: string;
+  level: Level;
+  conn_type: ConnType;
+  sender: string;
+  subject: string;
+  status: string; // extracted | extraction_failed
+  section_count: number;
+  flag_count: number;
+}
+
+export interface IntakeSection extends Section {
+  confidence: Confidence;
+}
+
+export interface IntakeBlock {
+  status: string;
+  level_confidence: Confidence;
+  flags: string[];
+  unmapped_docs: string[];
+  sender?: string;
+  subject?: string;
+  intake_id?: string;
+  error?: string;
+}
+
+export interface IntakeDetail {
+  id?: string;
+  name: string;
+  applicant: string;
+  level: Level;
+  conn_type: ConnType;
+  capacity: string;
+  sections: IntakeSection[];
+  documents: { name: string }[];
+  intake: IntakeBlock;
+}
