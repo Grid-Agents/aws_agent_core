@@ -17,6 +17,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -27,6 +28,8 @@ from reportlab.platypus import (
     Paragraph,
     SimpleDocTemplate,
     Spacer,
+    Table,
+    TableStyle,
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -63,6 +66,15 @@ def _styles() -> dict[str, ParagraphStyle]:
         ),
         "body": ParagraphStyle("body", base, fontSize=10, leading=14.5, textColor=INK, spaceAfter=2),
         "docpara": ParagraphStyle("docpara", base, fontSize=10, leading=15, textColor=INK, spaceAfter=8),
+        "docheading": ParagraphStyle(
+            "docheading", base, fontName="Helvetica-Bold", fontSize=10.5, textColor=INK,
+            leading=14, spaceBefore=10, spaceAfter=3,
+        ),
+        "cell": ParagraphStyle("cell", base, fontSize=8.5, leading=11.5, textColor=INK),
+        "cellhead": ParagraphStyle(
+            "cellhead", base, fontName="Helvetica-Bold", fontSize=8.5, leading=11.5, textColor=colors.white,
+        ),
+        "sig": ParagraphStyle("sig", base, fontSize=9, leading=16, textColor=MUTED, spaceBefore=2),
     }
 
 
@@ -117,6 +129,44 @@ def render_application_form(project: dict, out: Path) -> None:
     _doc(out).build(flow)
 
 
+def _ref_table(ref: dict, s: dict) -> Table:
+    rows = [
+        [Paragraph(f"<b>{k}</b>", s["cell"]), Paragraph(str(v), s["cell"])]
+        for k, v in ref.items()
+    ]
+    t = Table(rows, colWidths=[42 * mm, 124 * mm])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), HexColor("#f1f5f9")),
+        ("GRID", (0, 0), (-1, -1), 0.5, LINE),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    return t
+
+
+def _schedule_table(schedule: dict, s: dict) -> Table:
+    cols = schedule["columns"]
+    header = [Paragraph(c, s["cellhead"]) for c in cols]
+    body = [[Paragraph(str(c), s["cell"]) for c in row] for row in schedule["rows"]]
+    n = len(cols)
+    width = 166 * mm
+    t = Table([header, *body], colWidths=[width / n] * n, repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), ACCENT),
+        ("GRID", (0, 0), (-1, -1), 0.5, LINE),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, HexColor("#f6f8fa")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    return t
+
+
 def render_support_doc(doc: dict, out: Path) -> None:
     s = _styles()
     flow = [
@@ -124,8 +174,33 @@ def render_support_doc(doc: dict, out: Path) -> None:
         Paragraph(doc.get("subtitle", ""), s["subtitle"]),
         _rule(ACCENT),
     ]
-    for para in doc["paras"]:
-        flow.append(Paragraph(para, s["docpara"]))
+
+    if doc.get("ref"):
+        flow.append(_ref_table(doc["ref"], s))
+        flow.append(Spacer(1, 8))
+
+    if doc.get("sections"):
+        for sec in doc["sections"]:
+            if sec.get("heading"):
+                flow.append(Paragraph(sec["heading"], s["docheading"]))
+            for para in sec.get("paras", []):
+                flow.append(Paragraph(para, s["docpara"]))
+    else:  # legacy flat paragraph list
+        for para in doc.get("paras", []):
+            flow.append(Paragraph(para, s["docpara"]))
+
+    if doc.get("schedule"):
+        sch = doc["schedule"]
+        flow.append(Paragraph(sch.get("title", "Schedule"), s["docheading"]))
+        flow.append(_schedule_table(sch, s))
+        flow.append(Spacer(1, 6))
+
+    if doc.get("execution"):
+        flow.append(_rule())
+        flow.append(Paragraph("EXECUTION", s["label"]))
+        for line in doc["execution"]:
+            flow.append(Paragraph(line, s["sig"]))
+
     _doc(out).build(flow)
 
 

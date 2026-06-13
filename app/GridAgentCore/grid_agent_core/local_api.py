@@ -7,7 +7,7 @@ import os
 import re
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable, Iterator
 from typing import Any
 
 from pathlib import Path
@@ -108,6 +108,25 @@ def _agentcore_event_lines(payload: dict[str, Any]) -> Iterable[str]:
         lines, buffered = _pop_json_event_lines(buffered, decoder=decoder, final=True)
         for line in lines:
             yield line
+
+
+_AGENTCORE_LINE_DONE = object()
+
+
+def _next_agentcore_line(iterator: Iterator[str]) -> str | object:
+    try:
+        return next(iterator)
+    except StopIteration:
+        return _AGENTCORE_LINE_DONE
+
+
+async def _agentcore_event_lines_async(payload: dict[str, Any]) -> AsyncIterator[str]:
+    iterator = iter(_agentcore_event_lines(payload))
+    while True:
+        line = await asyncio.to_thread(_next_agentcore_line, iterator)
+        if line is _AGENTCORE_LINE_DONE:
+            break
+        yield str(line)
 
 
 def _agentcore_event_texts(text: str, *, content_type: str) -> Iterable[str]:
@@ -365,7 +384,7 @@ async def run_grid(request: GridRunRequest) -> StreamingResponse:
                     ensure_ascii=False,
                 ) + "\n"
                 await asyncio.sleep(0)
-                for line in _agentcore_event_lines(dict(payload)):
+                async for line in _agentcore_event_lines_async(dict(payload)):
                     if line:
                         try:
                             event = json.loads(line)

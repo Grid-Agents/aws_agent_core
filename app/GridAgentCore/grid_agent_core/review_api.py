@@ -17,8 +17,10 @@ console already renders, and honour the deployed-runtime switch
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -38,6 +40,10 @@ SEED_DIR.mkdir(parents=True, exist_ok=True)
 FORM_FILENAME = "00_application_form.pdf"
 DEFAULT_METHODS = ["vector", "pageindex", "find"]
 _MAX_DOC_CHARS = 6000  # cap per supporting document injected into a review prompt
+# How often to emit a keep-alive while no agent line has arrived. The deployed
+# AgentCore runtime can take a minute-plus to cold-start before its first byte;
+# the heartbeat tells the frontend the backend is alive and still waiting.
+_HEARTBEAT_INTERVAL_SECONDS = 5.0
 
 
 # --------------------------------------------------------------------------- #
@@ -244,28 +250,76 @@ def _copilot_prompt(project: dict[str, Any], section_title: str | None,
 # Agent streaming (local execution or deployed-runtime proxy)
 # --------------------------------------------------------------------------- #
 
-async def _stream_agent(payload: dict[str, Any]) -> AsyncIterator[str]:
-    # Lazy import avoids a circular import: local_api includes this router.
-    from .local_api import _agentcore_event_lines, _agentcore_runtime_arn
+_DRAIN_DONE = object()
 
+
+async def _with_heartbeat(source: AsyncIterator[str]) -> AsyncIterator[str]:
+    """Relay lines from ``source``, emitting a heartbeat event whenever no line
+    has arrived for ``_HEARTBEAT_INTERVAL_SECONDS``.
+
+    This keeps the NDJSON stream warm during the deployed runtime's cold-start
+    dead time (a single blocking invoke that can stall for a minute-plus before
+    its first byte), so the frontend can tell "still waiting" from "crashed".
+    """
+    iterator = source.__aiter__()
+    start = time.monotonic()
+
+    async def _next() -> Any:
+        try:
+            return await iterator.__anext__()
+        except StopAsyncIteration:
+            return _DRAIN_DONE
+
+    pending = asyncio.ensure_future(_next())
     try:
-        if _agentcore_runtime_arn():
-            yield json.dumps({
-                "type": "trace",
-                "entry": {
-                    "id": 0, "kind": "agentcore",
-                    "title": "Invoking deployed AgentCore runtime",
-                    "detail": "Forwarding this review to AWS Bedrock AgentCore.",
-                    "metadata": {},
-                },
-            }, ensure_ascii=False) + "\n"
-            for line in _agentcore_event_lines(dict(payload)):
-                if line:
-                    yield line
-        else:
-            payload.pop("runtime_session_id", None)
-            async for event in run_grid_agent_events(payload):
-                yield json.dumps(event, ensure_ascii=False) + "\n"
+        while True:
+            done, _ = await asyncio.wait({pending}, timeout=_HEARTBEAT_INTERVAL_SECONDS)
+            if not done:
+                yield json.dumps(
+                    {"type": "heartbeat", "waited_ms": round((time.monotonic() - start) * 1000)},
+                    ensure_ascii=False,
+                ) + "\n"
+                continue
+            line = pending.result()
+            if line is _DRAIN_DONE:
+                return
+            if line:
+                yield line
+            start = time.monotonic()
+            pending = asyncio.ensure_future(_next())
+    finally:
+        if not pending.done():
+            pending.cancel()
+
+
+async def _agent_lines(payload: dict[str, Any]) -> AsyncIterator[str]:
+    """Produce the raw NDJSON line stream for a run (local agent or proxy)."""
+    # Lazy import avoids a circular import: local_api includes this router.
+    from .local_api import _agentcore_event_lines_async, _agentcore_runtime_arn
+
+    if _agentcore_runtime_arn():
+        yield json.dumps({
+            "type": "trace",
+            "entry": {
+                "id": 0, "kind": "agentcore",
+                "title": "Invoking deployed AgentCore runtime",
+                "detail": "Forwarding this review to AWS Bedrock AgentCore (cold start may take ~1 min).",
+                "metadata": {},
+            },
+        }, ensure_ascii=False) + "\n"
+        async for line in _agentcore_event_lines_async(dict(payload)):
+            if line:
+                yield line
+    else:
+        payload.pop("runtime_session_id", None)
+        async for event in run_grid_agent_events(payload):
+            yield json.dumps(event, ensure_ascii=False) + "\n"
+
+
+async def _stream_agent(payload: dict[str, Any]) -> AsyncIterator[str]:
+    try:
+        async for line in _with_heartbeat(_agent_lines(payload)):
+            yield line
     except Exception as exc:  # surface failures as a terminal result event
         message = f"{type(exc).__name__}: {exc}"
         yield json.dumps({

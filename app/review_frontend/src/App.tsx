@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { AgentConsole } from "./components/AgentConsole";
 import { TopBar } from "./components/TopBar";
 import { Dashboard } from "./pages/Dashboard";
 import { ProjectPage } from "./pages/ProjectPage";
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/project/:id" element={<ProjectPage />} />
         <Route path="*" element={<Navigate to="/transmission" replace />} />
       </Routes>
+      <AgentConsole />
     </>
   );
 }

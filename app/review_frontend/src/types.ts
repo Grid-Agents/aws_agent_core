@@ -67,6 +67,45 @@ export interface ResultEvent {
   error?: string;
 }
 
+export interface HeartbeatEvent {
+  type: "heartbeat";
+  waited_ms?: number;
+}
+
 export type AgentEvent =
   | { type: "trace"; entry: TraceEntry }
+  | HeartbeatEvent
   | ResultEvent;
+
+/**
+ * Lifecycle of a single agent run as observed by the client.
+ *  connecting — request issued, awaiting response headers
+ *  waiting    — connection open / backend alive, but no reasoning yet (AWS warm-up)
+ *  active     — agent is reasoning / searching (trace steps streaming)
+ *  stalled    — running but no signal for a while (possible crash) — derived, never stored
+ *  done | error — terminal
+ */
+export type Phase =
+  | "idle"
+  | "connecting"
+  | "waiting"
+  | "active"
+  | "stalled"
+  | "done"
+  | "error";
+
+export type LogLevel =
+  | "info"
+  | "wait"
+  | "agent"
+  | "search"
+  | "cite"
+  | "warn"
+  | "error"
+  | "done";
+
+export interface LogLine {
+  t: number; // epoch ms
+  level: LogLevel;
+  text: string;
+}

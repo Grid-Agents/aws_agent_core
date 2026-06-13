@@ -4,6 +4,7 @@ import { useStore } from "../store";
 import type { Section } from "../types";
 import { Citations } from "./Citations";
 import { Markdown } from "./Markdown";
+import { RunStatusLine } from "./RunStatusLine";
 import { TraceList } from "./TraceList";
 import { VerdictBadge, verdictClass } from "./bits";
 
@@ -37,7 +38,7 @@ export function SectionReviewCard({
         <VerdictBadge status={r.status} verdict={r.verdict} />
         <button
           className="btn sm"
-          onClick={() => runReview(projectId, section.id)}
+          onClick={() => runReview(projectId, section.id, section.title)}
           disabled={running}
         >
           {running ? <><span className="spinner" /> Running</> : r.status === "done" ? "Re-review" : "Review"}
@@ -62,6 +63,10 @@ export function SectionReviewCard({
             </div>
           )}
         </div>
+
+        {running && (
+          <RunStatusLine phase={r.phase} startedAt={r.startedAt} lastEventAt={r.lastEventAt} />
+        )}
 
         {(running || r.traces.length > 0) && <TraceList traces={r.traces} live={running} />}
 

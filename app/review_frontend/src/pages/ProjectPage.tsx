@@ -64,7 +64,7 @@ export function ProjectPage() {
           <TypeChip type={project.conn_type} />
           <button
             className="btn primary"
-            onClick={() => runAll(project.id, project.sections.map((s) => s.id))}
+            onClick={() => runAll(project.id, project.sections.map((s) => ({ id: s.id, title: s.title })))}
             disabled={runningCount > 0}
           >
             {runningCount > 0 ? <><span className="spinner" /> {runningCount} running…</> : "⚡ Review all sections"}

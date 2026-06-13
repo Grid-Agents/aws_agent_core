@@ -4,6 +4,7 @@ import { useStore } from "../store";
 import type { ProjectDetail } from "../types";
 import { Citations } from "./Citations";
 import { Markdown } from "./Markdown";
+import { RunStatusLine } from "./RunStatusLine";
 import { TraceList } from "./TraceList";
 
 interface Pending {
@@ -92,6 +93,9 @@ export function CopilotTab({ project }: { project: ProjectDetail }) {
                 </div>
                 <div className="question">{p.question}</div>
                 <div className="pbody">
+                  {p.status === "running" && (
+                    <RunStatusLine phase={p.phase} startedAt={p.startedAt} lastEventAt={p.lastEventAt} />
+                  )}
                   {p.status === "running" && <TraceList traces={p.traces} live />}
                   {p.status === "error" && <div className="summary fail">⚠ {p.error}</div>}
                   {p.status === "done" && (

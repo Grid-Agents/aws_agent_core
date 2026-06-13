@@ -13,18 +13,26 @@ export async function fetchProject(id: string): Promise<ProjectDetail> {
   return r.json();
 }
 
+/** Lifecycle hooks shared by the review + co-pilot stream callers. */
+export interface StreamHooks {
+  onEvent: (ev: AgentEvent) => void;
+  /** Fired once the response headers arrive (connection open, before any event). */
+  onOpen?: () => void;
+  signal?: AbortSignal;
+}
+
 export async function streamReview(
   projectId: string,
   sectionId: string,
-  onEvent: (ev: AgentEvent) => void,
-  signal?: AbortSignal,
+  hooks: StreamHooks,
 ): Promise<void> {
   const r = await fetch(
     `/api/review/projects/${projectId}/sections/${sectionId}/review`,
-    { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal },
+    { method: "POST", headers: { "content-type": "application/json" }, body: "{}", signal: hooks.signal },
   );
+  hooks.onOpen?.();
   if (!r.ok) throw new Error(`review ${r.status}`);
-  await streamNDJSON(r, onEvent);
+  await streamNDJSON(r, hooks.onEvent);
 }
 
 export interface CopilotBody {
@@ -36,17 +44,17 @@ export interface CopilotBody {
 
 export async function streamCopilot(
   body: CopilotBody,
-  onEvent: (ev: AgentEvent) => void,
-  signal?: AbortSignal,
+  hooks: StreamHooks,
 ): Promise<void> {
   const r = await fetch(`/api/review/copilot`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
-    signal,
+    signal: hooks.signal,
   });
+  hooks.onOpen?.();
   if (!r.ok) throw new Error(`copilot ${r.status}`);
-  await streamNDJSON(r, onEvent);
+  await streamNDJSON(r, hooks.onEvent);
 }
 
 /** Resolve an evidence figure to a servable /artifacts URL. */
