@@ -35,6 +35,8 @@ from reportlab.platypus import (
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from seed_data import PROJECTS  # noqa: E402
 
+from grid_agent_core.application_form import render_application_form  # noqa: F401
+
 APPLICATIONS_DIR = Path(__file__).resolve().parent / "applications"
 
 INK = HexColor("#0f172a")
@@ -88,45 +90,6 @@ def _doc(path: Path) -> SimpleDocTemplate:
 
 def _rule(color=LINE) -> HRFlowable:
     return HRFlowable(width="100%", thickness=0.8, color=color, spaceBefore=6, spaceAfter=6)
-
-
-def render_application_form(project: dict, out: Path) -> None:
-    s = _styles()
-    flow = [
-        Paragraph("Grid Interconnection Application Form", s["title"]),
-        Paragraph(
-            f"{project['level'].capitalize()} connection &mdash; {project['conn_type']}",
-            s["subtitle"],
-        ),
-        _rule(ACCENT),
-    ]
-
-    meta = [
-        ("PROJECT ID", project["id"]),
-        ("PROJECT NAME", project["name"]),
-        ("APPLICANT", project["applicant"]),
-        ("LEVEL", project["level"]),
-        ("CONNECTION TYPE", project["conn_type"]),
-        ("CAPACITY", project["capacity"]),
-        ("STATUS", project["status"]),
-        ("DATE SUBMITTED", project["submitted"]),
-    ]
-    for label, value in meta:
-        flow.append(Paragraph(f"<b>{label}:</b> {value}", s["meta"]))
-    flow.append(_rule())
-
-    for i, sec in enumerate(project["sections"], start=1):
-        docs = ", ".join(sec["docs"]) if sec["docs"] else "none"
-        flow.append(Paragraph(f"SECTION {i}: {sec['title']}", s["section"]))
-        flow.append(Paragraph("REQUIREMENT:", s["label"]))
-        flow.append(Paragraph(sec["requirement"], s["body"]))
-        flow.append(Paragraph("SUBMITTED:", s["label"]))
-        flow.append(Paragraph(sec["submitted"], s["body"]))
-        flow.append(Paragraph("SUPPORTING DOCS:", s["label"]))
-        flow.append(Paragraph(docs, s["body"]))
-        flow.append(Spacer(1, 2))
-
-    _doc(out).build(flow)
 
 
 def _ref_table(ref: dict, s: dict) -> Table:
