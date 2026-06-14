@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Grid BFF infrastructure — explained from scratch</title>
+<style>
+  :root{
+    --ink:#0f172a; --muted:#5b6b7c; --paper:#f6f4ee; --card:#fffdf8;
+    --line:#d9d3c7; --accent:#0e7490; --accent2:#9a6b00; --intake:#b4530a;
+    --good:#0f766e; --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.05);
+    --mono:"SFMono-Regular",ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;
+    background-image:radial-gradient(circle at 1px 1px,rgba(15,23,42,.04) 1px,transparent 0);background-size:26px 26px;}
+  a{color:var(--accent)}
+  header.hero{max-width:920px;margin:0 auto;padding:56px 22px 12px}
+  .eyebrow{font:600 11.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+  h1{font-size:34px;line-height:1.12;margin:.32em 0 .12em}
+  .lede{font-size:17px;color:var(--muted);max-width:60ch}
+  .wrap{max-width:920px;margin:0 auto;padding:0 22px}
+  .analogy{background:#eef6f7;border:1px solid #cfe6e9;border-radius:12px;padding:14px 16px;margin:18px 0;font-size:15px}
+  .analogy b{color:var(--accent)}
+  /* controls */
+  .controls{position:sticky;top:0;z-index:30;background:rgba(246,244,238,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);margin-top:26px}
+  .controls .inner{max-width:920px;margin:0 auto;padding:10px 22px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .toggle{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;
+    border:1px solid var(--line);background:var(--card);padding:6px 11px;border-radius:999px;user-select:none}
+  .toggle input{accent-color:var(--accent)}
+  .toggle.on{border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 2px rgba(14,116,144,.1)}
+  .spacer{flex:1}
+  .legend{font:600 11px/1 var(--mono);letter-spacing:.08em;color:var(--muted)}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin:0 4px -1px 10px}
+  /* flow diagram */
+  section.flow{margin:30px 0}
+  .diagram{display:grid;grid-template-columns:1fr;gap:12px}
+  .flowrow{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;justify-content:center}
+  .node{flex:1 1 150px;min-width:140px;max-width:230px;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:12px 13px;box-shadow:var(--shadow);cursor:pointer;transition:.15s}
+  .node:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .node h4{margin:0 0 3px;font-size:13.5px}
+  .node p{margin:0;font-size:12px;color:var(--muted)}
+  .node .pill{font:600 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .arrows{text-align:center;color:var(--muted);font-size:20px;line-height:1}
+  /* cards */
+  h2.sec{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    margin:42px 0 6px;font-family:var(--mono)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:14px 0;box-shadow:var(--shadow);
+    overflow:hidden;transition:.18s}
+  .card .head{display:flex;gap:10px;align-items:flex-start;padding:15px 17px;cursor:pointer}
+  .num{font:600 12px/1.6 var(--mono);color:#fff;background:var(--accent);min-width:26px;height:26px;border-radius:7px;
+    text-align:center;flex:none}
+  .card[data-tag=intake] .num{background:var(--intake)}
+  .card[data-tag=iam] .num{background:var(--accent2)}
+  .htext{flex:1}
+  .htext h3{margin:0;font-size:16px}
+  .htext .sub{font-size:12.5px;color:var(--muted);font-family:var(--mono)}
+  .tag{font:600 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:4px 7px;border-radius:6px;
+    border:1px solid var(--line);color:var(--muted);flex:none;align-self:center}
+  .tag.intake{color:var(--intake);border-color:#e6c4a8;background:#fbeee3}
+  .tag.iam{color:var(--accent2);border-color:#e6d6a8;background:#faf3df}
+  .chev{flex:none;color:var(--muted);transition:transform .2s;align-self:center}
+  .card.open .chev{transform:rotate(90deg)}
+  .body{display:none;padding:0 17px 16px 53px}
+  .card.open .body{display:block}
+  .plain{font-size:15px;margin:2px 0 10px}
+  .why{font-size:13.5px;color:var(--good);background:#edf7f5;border-left:3px solid var(--good);
+    padding:8px 12px;border-radius:0 8px 8px 0;margin:10px 0}
+  pre{margin:10px 0 0;background:#0f172a;color:#e6edf3;border-radius:10px;padding:13px 14px;overflow:auto;
+    font:12.5px/1.5 var(--mono)}
+  pre .k{color:#7dd3fc}.pre .s{color:#a7f3d0}
+  pre .c{color:#64748b;font-style:italic}.pre .v{color:#fcd34d}
+  body.hidecode pre{display:none}
+  body.dim .card:not([data-tag=intake]){opacity:.42;filter:saturate(.5)}
+  body.dim .card[data-tag=intake]{box-shadow:0 0 0 2px rgba(180,83,10,.25),var(--shadow)}
+  /* glossary terms */
+  .term{border-bottom:1.5px dotted var(--accent);cursor:help;font-weight:600}
+  #tip{position:fixed;z-index:60;max-width:280px;background:#0f172a;color:#e6edf3;font-size:13px;line-height:1.45;
+    padding:10px 12px;border-radius:9px;box-shadow:0 8px 30px rgba(0,0,0,.3);display:none;pointer-events:none}
+  #tip b{color:#7dd3fc}
+  /* glossary list */
+  .gloss{columns:2;column-gap:26px}
+  @media(max-width:680px){.gloss{columns:1}}
+  .gloss dt{font-weight:700;margin-top:12px;break-after:avoid}
+  .gloss dd{margin:0 0 2px;font-size:13.5px;color:var(--muted)}
+  footer{max-width:920px;margin:40px auto 70px;padding:0 22px;color:var(--muted);font-size:13px}
+  .steps{counter-reset:s;list-style:none;padding:0}
+  .steps li{counter-increment:s;position:relative;padding:8px 0 8px 38px;border-bottom:1px dashed var(--line);font-size:14.5px}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:7px;width:24px;height:24px;border-radius:7px;
+    background:var(--ink);color:#fff;font:600 12px/24px var(--mono);text-align:center}
+</style>
+</head>
+<body class="hidecode">
+<header class="hero">
+  <div class="eyebrow">Grid AgentCore · infra/bff</div>
+  <h1>The Grid “BFF” server, explained from zero</h1>
+  <p class="lede">This walks through the Terraform that creates one small always-on computer in AWS — the
+  <b>BFF</b> (“backend-for-frontend”). No cloud or Terraform background assumed. Hover any
+  <span class="term" data-def="A dotted-underlined word has a plain-English definition. Hover or tap it.">dotted word</span>
+  for a definition; click a box to expand it.</p>
+
+  <div class="analogy">
+    <b>The one-sentence version.</b> These files are a <i>recipe</i>. Running <code>terraform apply</code>
+    reads the recipe and builds a tiny rented computer in Amazon’s data centre that sits between your
+    web app and the heavy AI service — taking requests, doing small jobs (like reading emailed PDFs),
+    and forwarding the big ones.
+  </div>
+</header>
+
+<div class="controls">
+  <div class="inner">
+    <label class="toggle" id="t-code"><input type="checkbox" id="cb-code"> Show the actual code</label>
+    <label class="toggle" id="t-dim"><input type="checkbox" id="cb-dim"> Highlight the email-intake parts</label>
+    <label class="toggle" id="t-all"><input type="checkbox" id="cb-all"> Expand all</label>
+    <span class="spacer"></span>
+    <span class="legend">tags:<span class="dot" style="background:#0e7490"></span>core<span class="dot" style="background:#9a6b00"></span>iam<span class="dot" style="background:#b4530a"></span>email-intake</span>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <section class="flow">
+    <h2 class="sec">How the pieces connect</h2>
+    <div class="diagram">
+      <div class="flowrow">
+        <div class="node" data-go="c-sg"><span class="pill">outside</span><h4>You / the web app</h4><p>Reach the box through a secure tunnel — no open doors on the internet.</p></div>
+        <div class="node" data-go="c-instance"><span class="pill">the box</span><h4>EC2 BFF server</h4><p>A small rented Linux computer running the app (<code>grid-local-api</code>).</p></div>
+      </div>
+      <div class="arrows">▼ the box wears an identity badge (no passwords stored) ▼</div>
+      <div class="flowrow">
+        <div class="node" data-go="c-policy"><span class="pill">runtime</span><h4>AgentCore runtime</h4><p>The heavy AI brain. The box <i>forwards</i> big jobs here.</p></div>
+        <div class="node" data-go="c-bedrock"><span class="pill">intake</span><h4>Bedrock (Claude)</h4><p>The box calls Claude <i>directly</i> to read emailed PDFs.</p></div>
+        <div class="node" data-go="c-ssm-read"><span class="pill">intake</span><h4>SSM &amp; S3</h4><p>Secrets (Gmail token) + files live in AWS; the box reads them with its badge.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <h2 class="sec">What even is this? (30-second primer)</h2>
+  <div class="card open"><div class="head"><span class="num">i</span><div class="htext"><h3>Terraform = “infrastructure as a recipe”</h3><div class="sub">why these files exist</div></div><span class="tag">concept</span><span class="chev">▶</span></div>
+    <div class="body">
+      <p class="plain">Normally you’d build a server by clicking around Amazon’s website. That’s error-prone and nobody
+      remembers what they clicked. <span class="term" data-def="A tool by HashiCorp. You write what you want in .tf files; it figures out the API calls to create/update/delete it to match.">Terraform</span>
+      lets you instead <i>describe</i> the server in text files. You run one command and it builds exactly that —
+      and it’s reviewable, repeatable, and version-controlled like code. This is called
+      <span class="term" data-def="Infrastructure as Code — managing servers/networks/permissions through committed text files instead of manual clicks.">Infrastructure as Code</span>.</p>
+      <div class="why">Two building blocks you’ll see everywhere below: a <b>resource</b> = “create this thing”, and a
+      <b>data source</b> = “look up something that already exists” (read-only).</div>
+    </div>
+  </div>
+
+  <h2 class="sec">main.tf — walking the file top to bottom</h2>
+  <div id="cards"></div>
+
+  <h2 class="sec">user_data.sh.tftpl — what happens when the box turns on</h2>
+  <div class="card"><div class="head"><span class="num">▸</span><div class="htext"><h3>The first-boot script</h3><div class="sub">runs once, as root, the moment the server starts</div></div><span class="tag">compute</span><span class="chev">▶</span></div>
+    <div class="body">
+      <p class="plain">An <span class="term" data-def="EC2 user_data: a script AWS runs automatically the first time an instance boots. How a blank Linux box turns into your running app.">EC2 user-data</span>
+      script. Terraform fills in the blanks (region, model, the Gmail settings) and AWS runs it on first boot:</p>
+      <ol class="steps">
+        <li>Install basics (tar, unzip) and the <b>AWS CLI</b>.</li>
+        <li>Install <b>uv</b> (a fast Python package/version manager).</li>
+        <li>Download the app’s code zip <b>from S3</b> (using the box’s badge — no GitHub keys needed) and unpack it.</li>
+        <li>Write <code>/opt/grid-bff/bff.env</code> — the settings the app reads (region, model, AgentCore ARN, and the <span class="term" data-def="GRID_GMAIL_INTAKE / _QUERY / _TOKEN_SSM_PARAM — switches that turn the email poller on and tell it which inbox query to use and where its token lives.">Gmail intake switches</span>). <b>No secrets here</b> — the token is read from AWS at runtime.</li>
+        <li>Install the app’s Python dependencies (<code>uv sync --extra build</code>).</li>
+        <li>Create a <span class="term" data-def="systemd: Linux’s service manager. A 'unit' file tells it to keep your app running and restart it if it crashes.">systemd</span> service so the app starts now <i>and</i> on every reboot, auto-restarting if it crashes.</li>
+      </ol>
+      <div class="why">Because it’s one service (no <code>--workers</code>), exactly <b>one</b> email poller runs — no risk of two copies grabbing the same email.</div>
+    </div>
+  </div>
+
+  <h2 class="sec">variables.tf &amp; outputs.tf — the knobs and the receipts</h2>
+  <div class="card"><div class="head"><span class="num">⚙</span><div class="htext"><h3>variables.tf — the inputs you pass in</h3><div class="sub">terraform apply -var "..."</div></div><span class="tag">config</span><span class="chev">▶</span></div>
+    <div class="body">
+      <p class="plain">Knobs so the same recipe works in any account: <code>region</code>, <code>instance_type</code>
+      (<span class="term" data-def="The size of the rented computer. t3.medium = ~2 vCPU / 4GB RAM — cheap, fine for a proxy.">t3.medium</span> by default),
+      <code>runtime_arn</code> (which AI brain to forward to), the S3 bucket, and the email-intake toggles
+      (<code>gmail_intake_enabled</code>, <code>gmail_token_ssm_param</code>, <code>gmail_query</code> — all off by default).</p>
+    </div>
+  </div>
+  <div class="card"><div class="head"><span class="num">📤</span><div class="htext"><h3>outputs.tf — what you get back after building</h3><div class="sub">terraform output</div></div><span class="tag">config</span><span class="chev">▶</span></div>
+    <div class="body">
+      <p class="plain">After <code>apply</code>, Terraform hands you the <code>instance_id</code> and — most usefully — a ready-made
+      <span class="term" data-def="AWS Systems Manager Session Manager: get a shell or a port-tunnel onto a private box without SSH keys or open ports. Auth is your AWS identity.">SSM</span>
+      tunnel command. Run it and the private box’s console opens at <code>http://localhost:8000</code> on your laptop —
+      no open ports, no public IP needed.</p>
+    </div>
+  </div>
+
+  <h2 class="sec">Glossary</h2>
+  <dl class="gloss" id="gloss"></dl>
+</main>
+
+<footer>
+  <p><b>The lifecycle in one line:</b> edit a <code>.tf</code> file → <code>terraform plan</code> (preview the diff) →
+  <code>terraform apply</code> (AWS builds/changes it). Changing the boot script replaces the box entirely
+  (that’s the <code>user_data_replace_on_change</code> flag — which is why on-disk data doesn’t survive a redeploy).</p>
+  <p>Generated for the Grid AgentCore BFF (<code>infra/bff/</code>). Open the real files alongside this page:
+  <code>main.tf · variables.tf · user_data.sh.tftpl · outputs.tf</code>.</p>
+</footer>
+
+<div id="tip"></div>
+
+<script>
+const BLOCKS = [
+ {id:"c-terraform",tag:"core",title:'terraform { } + provider "aws"',sub:"setup",
+  plain:'Declares the cloud plugin to use (<span class="term" data-def="A Terraform plugin that knows how to talk to AWS’s APIs. ~> 5.60 pins a compatible version.">AWS provider</span>, a pinned version) and logs into AWS for one <b>region</b> (a geographic data-centre group, here us-east-1). <code>default_tags</code> auto-labels everything it creates so you can find/bill it later.',
+  why:'No credentials live in these files — Terraform uses whatever AWS login you already have on your machine.',
+  code:`terraform { required_providers { aws = { source="hashicorp/aws", version="~> 5.60" } } }\nprovider "aws" {\n  region = var.region\n  default_tags { tags = { Project="GridAgentCore", Component="bff-proxy" } }\n}`},
+ {id:"c-lookups",tag:"net",title:'data "aws_vpc" / "aws_subnets" / "aws_ssm_parameter" (AMI)',sub:"read-only lookups",
+  plain:'These don’t <i>create</i> anything — they <b>look up</b> things that already exist. The account’s default <span class="term" data-def="Virtual Private Cloud — your own private network inside AWS. Every account has a default one.">VPC</span> (network) and its <span class="term" data-def="A subnet is a slice of a VPC’s address range, usually tied to one availability zone. The box gets placed in one.">subnets</span>, plus the ID of the newest <span class="term" data-def="Amazon Machine Image — the template disk a server boots from. Here: the latest Amazon Linux 2023.">Amazon Linux image</span> to boot from.',
+  why:'Reusing the default network means no new VPC to manage — fine for one small box.',
+  code:`data "aws_vpc" "default"     { default = true }\ndata "aws_subnets" "default" { filter { name="vpc-id" values=[data.aws_vpc.default.id] } }\ndata "aws_ssm_parameter" "al2023" { name = "/aws/.../al2023-ami-...-x86_64" }`},
+ {id:"c-identity",tag:"iam",title:'data "aws_caller_identity" "current"',sub:"who am I?",
+  plain:'Asks AWS “what’s my account number?”. That number is needed to build exact resource names (<span class="term" data-def="Amazon Resource Name — the globally-unique ID of any AWS thing, like arn:aws:ssm:us-east-1:123456789012:parameter/grid-bff/gmail-token.">ARNs</span>) for the permissions below.',
+  why:'Lets the policy say “only my account’s SSM parameter,” not someone else’s.',
+  code:`data "aws_caller_identity" "current" {}`},
+ {id:"c-assume",tag:"iam",title:'data "aws_iam_policy_document" "assume"',sub:"who may wear the badge",
+  plain:'An <span class="term" data-def="IAM = Identity and Access Management — AWS’s permission system: who can do what to which resource.">IAM</span> rule that says “the EC2 service is allowed to <i>assume</i> (wear) this role.” Without it, a server can’t pick up the identity badge at all.',
+  why:'This is the “trust” half of a role: it names <i>who</i> can use it (EC2), separately from <i>what</i> it can do.',
+  code:`data "aws_iam_policy_document" "assume" {\n  statement {\n    actions = ["sts:AssumeRole"]\n    principals { type="Service" identifiers=["ec2.amazonaws.com"] }\n  }\n}`},
+ {id:"c-role",tag:"iam",title:'resource "aws_iam_role" "bff"',sub:"the identity badge",
+  plain:'Creates the <span class="term" data-def="An IAM role is a set of permissions a machine can temporarily ‘wear’. The server gets short-lived keys automatically — no passwords stored on the box.">IAM role</span> itself — the badge the server wears so it never needs stored AWS passwords. AWS rotates its keys automatically behind the scenes.',
+  why:'This is the single most important security idea here: <b>no static keys on the box</b>.',
+  code:`resource "aws_iam_role" "bff" {\n  name = "\${var.name}-role"\n  assume_role_policy = data.aws_iam_policy_document.assume.json\n}`},
+ {id:"c-policy",tag:"iam",title:'data "aws_iam_policy_document" "bff" — the permission list',sub:"what the badge can do",
+  plain:'The exact list of allowed actions. Each <b>statement</b> is one permission, scoped as tightly as possible:<br>• <b>InvokeAgentCore</b> — forward jobs to the AI runtime.<br>• <b>ReadArtifacts / RunHistory / ListBucket</b> — read corpus files and read/write run history in <span class="term" data-def="Simple Storage Service — AWS’s file storage (‘buckets’ of objects).">S3</span>.',
+  why:'“Least privilege”: the badge can do these specific things and nothing else.',
+  code:`statement { sid="InvokeAgentCore"  actions=["bedrock-agentcore:InvokeAgentRuntime"] resources=[var.runtime_arn,"\${var.runtime_arn}/*"] }\nstatement { sid="ReadArtifacts"    actions=["s3:GetObject"]  resources=["arn:aws:s3:::\${var.s3_bucket}/\${var.s3_prefix}/*"] }\nstatement { sid="RunHistory"       actions=["s3:GetObject","s3:PutObject","s3:DeleteObject"] resources=[".../runs/*"] }\nstatement { sid="ListBucket"       actions=["s3:ListBucket"] resources=["arn:aws:s3:::\${var.s3_bucket}"] condition{...} }`},
+ {id:"c-bedrock",tag:"intake",title:'↳ statement "InvokeBedrockModel"  (email-intake only)',sub:"call Claude directly",
+  plain:'Added <b>only when email intake is on</b>. The email extractor calls <span class="term" data-def="Amazon Bedrock — AWS’s managed access to foundation models like Claude. ‘InvokeModel’ = run a prompt.">Claude on Bedrock</span> <i>directly</i> (not through the AgentCore runtime), so the badge needs permission to invoke the Claude model family.',
+  why:'This is the one new permission “Option A” adds. It’s wrapped in <code>dynamic</code> so it only appears when <code>gmail_intake_enabled = true</code>.',
+  code:`dynamic "statement" {\n  for_each = var.gmail_intake_enabled ? [1] : []\n  content {\n    sid = "InvokeBedrockModel"\n    actions = ["bedrock:InvokeModel","bedrock:InvokeModelWithResponseStream"]\n    resources = [\n      "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",\n      "arn:aws:bedrock:*:\${account_id}:inference-profile/us.anthropic.claude-*",\n    ]\n  }\n}`},
+ {id:"c-ssm-read",tag:"intake",title:'↳ statements "ReadGmailToken" + "DecryptGmailToken"  (email-intake only)',sub:"fetch the secret from AWS",
+  plain:'Lets the badge read the Gmail login token from <span class="term" data-def="AWS Systems Manager Parameter Store — a place to store config and secrets. A SecureString is encrypted with KMS.">SSM Parameter Store</span> and <span class="term" data-def="Key Management Service — AWS’s encryption keys. Reading an encrypted SecureString needs permission to decrypt it.">decrypt</span> it. The token is stored in AWS, never in the repo or the disk image.',
+  why:'The <code>kms:ViaService</code> condition means the box can only use the key <i>through SSM</i> — not for anything else.',
+  code:`dynamic "statement" {        # read the parameter\n  for_each = var.gmail_token_ssm_param != "" ? [1] : []\n  content { sid="ReadGmailToken" actions=["ssm:GetParameter"]\n            resources=["arn:aws:ssm:\${region}:\${account}:parameter\${var.gmail_token_ssm_param}"] }\n}\ndynamic "statement" {        # decrypt it (SecureString)\n  for_each = var.gmail_token_ssm_param != "" ? [1] : []\n  content { sid="DecryptGmailToken" actions=["kms:Decrypt"] resources=["*"]\n            condition { test="StringEquals" variable="kms:ViaService" values=["ssm.\${region}.amazonaws.com"] } }\n}`},
+ {id:"c-attach",tag:"iam",title:'aws_iam_role_policy + ssm attachment + instance_profile',sub:"staple it all together",
+  plain:'Three small wiring steps: attach the permission list to the role; <i>also</i> attach AWS’s prebuilt SSM permission (so you can reach the box without open ports); and wrap the role in an <span class="term" data-def="The glue object that lets an EC2 instance actually wear an IAM role. You attach the profile to the instance, the profile points to the role.">instance profile</span>, which is the only form an EC2 box can wear.',
+  why:'A role can’t be attached to a server directly — it must go through an instance profile.',
+  code:`resource "aws_iam_role_policy" "bff" { role=aws_iam_role.bff.id  policy=data.aws_iam_policy_document.bff.json }\nresource "aws_iam_role_policy_attachment" "ssm" { role=aws_iam_role.bff.name  policy_arn=".../AmazonSSMManagedInstanceCore" }\nresource "aws_iam_instance_profile" "bff" { role=aws_iam_role.bff.name }`},
+ {id:"c-sg",tag:"net",title:'resource "aws_security_group" "bff"',sub:"the firewall",
+  plain:'A <span class="term" data-def="A virtual firewall around the instance. ‘ingress’ = inbound rules, ‘egress’ = outbound rules.">security group</span>: by default <b>no inbound</b> ports at all (nobody can connect from the internet) and <b>all outbound</b> allowed (so the box can reach AWS APIs, Gmail, package mirrors).',
+  why:'No open doors = you reach it only through the SSM tunnel. The most attack-proof setup.',
+  code:`resource "aws_security_group" "bff" {\n  # ingress only if expose_public=true (off by default)\n  egress { from_port=0 to_port=0 protocol="-1" cidr_blocks=["0.0.0.0/0"] }\n}`},
+ {id:"c-code",tag:"compute",title:'resource "aws_s3_object" "code"',sub:"ship the app",
+  plain:'Uploads the app’s code zip (built locally) to S3 so the box can download it on boot using its badge. The <code>etag</code> is a checksum — change the code and Terraform notices.',
+  why:'Keeps the private repo off the box: it pulls the code from your own S3 bucket, no GitHub credentials needed.',
+  code:`resource "aws_s3_object" "code" {\n  bucket=var.s3_bucket  key="\${var.s3_prefix}/deploy/grid-bff.tar.gz"\n  source="\${path.module}/dist/grid-bff.tar.gz"  etag=filemd5(".../grid-bff.tar.gz")\n}`},
+ {id:"c-instance",tag:"compute",title:'resource "aws_instance" "bff" — the actual computer',sub:"the rented box",
+  plain:'The star of the show: the <span class="term" data-def="Elastic Compute Cloud — a virtual server you rent by the hour. ‘Instance’ = one running server.">EC2 instance</span>. It picks the OS image, the size, the subnet, attaches the <b>instance profile</b> (badge) and the firewall, gets a 30 GB encrypted disk, and runs the boot script. <code>user_data_replace_on_change=true</code> means editing the boot script rebuilds the box.',
+  why:'Everything above exists to make <i>this one line</i> safe: a server with an identity, a firewall, and a startup script — and zero stored passwords.',
+  code:`resource "aws_instance" "bff" {\n  ami=data.aws_ssm_parameter.al2023.value  instance_type=var.instance_type\n  subnet_id=data.aws_subnets.default.ids[0]  iam_instance_profile=aws_iam_instance_profile.bff.name\n  vpc_security_group_ids=[aws_security_group.bff.id]  associate_public_ip_address=true\n  root_block_device { volume_size=30 volume_type="gp3" encrypted=true }\n  user_data_replace_on_change=true\n  user_data=templatefile(".../user_data.sh.tftpl", { region=var.region, model=var.model,\n            gmail_intake_enabled=var.gmail_intake_enabled, gmail_token_ssm_param=..., ... })\n}`},
+];
+
+const GLOSS = [
+ ["Terraform","Write what infrastructure you want in .tf files; one command builds it to match. Reviewable and repeatable."],
+ ["Infrastructure as Code","Managing servers/permissions through committed text files instead of manual console clicks."],
+ ["resource vs data source","resource = create/own a thing. data source = read-only lookup of something that already exists."],
+ ["provider","A plugin that teaches Terraform how to talk to a cloud (here, AWS)."],
+ ["region","A geographic group of AWS data-centres (e.g. us-east-1). Resources live in one region."],
+ ["VPC / subnet","Your private network in AWS, and a slice of it where the server is placed."],
+ ["EC2 instance","A virtual server rented by the hour. This whole file makes exactly one."],
+ ["AMI","The template disk an instance boots from — here the latest Amazon Linux 2023."],
+ ["IAM","AWS’s permission system: who (identity) can do what (action) to which thing (resource)."],
+ ["IAM role","A set of permissions a machine temporarily ‘wears’, with auto-rotated keys — so no passwords sit on the box."],
+ ["instance profile","The wrapper that lets an EC2 instance actually wear an IAM role."],
+ ["policy / statement","A policy is a list of statements; each statement = one allow rule (actions on resources)."],
+ ["ARN","Amazon Resource Name — the unique ID of any AWS thing, used to scope permissions."],
+ ["security group","A virtual firewall: ingress (inbound) + egress (outbound) rules around the instance."],
+ ["S3","Object storage — ‘buckets’ of files. Holds the app zip, the corpus, and run history."],
+ ["SSM / Session Manager","Reach a private box (shell or port tunnel) using your AWS identity — no SSH keys, no open ports."],
+ ["Parameter Store / SecureString","A place in AWS to store config + secrets; SecureString values are KMS-encrypted."],
+ ["KMS","Key Management Service — AWS encryption keys. Decrypting a SecureString needs kms:Decrypt."],
+ ["Bedrock","AWS’s managed access to models like Claude. ‘InvokeModel’ runs a prompt."],
+ ["AgentCore runtime","The deployed heavy AI agent. The BFF forwards big retrieval jobs to it."],
+ ["user_data","A script AWS runs on an instance’s first boot — turns a blank Linux box into your running app."],
+ ["systemd","Linux’s service manager — keeps the app running and restarts it on crash/reboot."],
+ ["dynamic block","Terraform syntax that includes a block only when a condition holds (used to add intake permissions only when enabled)."],
+];
+
+// render cards
+const esc = s => s;
+document.getElementById("cards").innerHTML = BLOCKS.map((b,i)=>`
+ <div class="card" id="${b.id}" data-tag="${b.tag}">
+   <div class="head"><span class="num">${i+1}</span>
+     <div class="htext"><h3>${b.title}</h3><div class="sub">${b.sub}</div></div>
+     <span class="tag ${b.tag==='intake'?'intake':b.tag==='iam'?'iam':''}">${b.tag==='intake'?'email-intake':b.tag}</span>
+     <span class="chev">▶</span></div>
+   <div class="body"><p class="plain">${b.plain}</p><div class="why">${b.why}</div><pre>${esc(b.code)}</pre></div>
+ </div>`).join("");
+
+// glossary
+document.getElementById("gloss").innerHTML = GLOSS.map(g=>`<dt>${g[0]}</dt><dd>${g[1]}</dd>`).join("");
+
+// expand/collapse
+document.querySelectorAll(".card .head").forEach(h=>h.addEventListener("click",()=>h.parentElement.classList.toggle("open")));
+
+// controls
+const cbCode=document.getElementById("cb-code"), cbDim=document.getElementById("cb-dim"), cbAll=document.getElementById("cb-all");
+cbCode.addEventListener("change",()=>{document.body.classList.toggle("hidecode",!cbCode.checked);document.getElementById("t-code").classList.toggle("on",cbCode.checked);});
+cbDim.addEventListener("change",()=>{document.body.classList.toggle("dim",cbDim.checked);document.getElementById("t-dim").classList.toggle("on",cbDim.checked);});
+cbAll.addEventListener("change",()=>{document.querySelectorAll("#cards .card,.wrap > .card").forEach(c=>c.classList.toggle("open",cbAll.checked));document.getElementById("t-all").classList.toggle("on",cbAll.checked);});
+
+// diagram nodes jump to card
+document.querySelectorAll(".node").forEach(n=>n.addEventListener("click",()=>{
+  const c=document.getElementById(n.dataset.go); if(!c)return; c.classList.add("open");
+  c.scrollIntoView({behavior:"smooth",block:"center"});
+  c.animate([{boxShadow:"0 0 0 3px rgba(14,116,144,.5)"},{boxShadow:"var(--shadow)"}],{duration:1200});
+}));
+
+// glossary tooltips
+const tip=document.getElementById("tip");
+function showTip(el,e){tip.innerHTML="<b>"+el.textContent+"</b> — "+el.dataset.def;tip.style.display="block";
+  const x=Math.min(e.clientX+14,innerWidth-300),y=e.clientY+16;tip.style.left=x+"px";tip.style.top=y+"px";}
+document.addEventListener("mouseover",e=>{const t=e.target.closest(".term");if(t)showTip(t,e);});
+document.addEventListener("mousemove",e=>{if(tip.style.display==="block"){const t=e.target.closest(".term");
+  if(t){tip.style.left=Math.min(e.clientX+14,innerWidth-300)+"px";tip.style.top=(e.clientY+16)+"px";}}});
+document.addEventListener("mouseout",e=>{if(e.target.closest(".term"))tip.style.display="none";});
+document.addEventListener("click",e=>{const t=e.target.closest(".term");if(t){showTip(t,e);setTimeout(()=>tip.style.display="none",3500);}});
+</script>
+</body>
+</html>
