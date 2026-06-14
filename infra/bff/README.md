@@ -85,6 +85,48 @@ cd infra/bff && terraform apply
 cd infra/bff && terraform destroy
 ```
 
+## Email intake (Gmail poller)
+
+The BFF can run the email-intake poller (pulls application bundles from a Gmail inbox,
+extracts them with Claude on Bedrock, queues them for operator Accept/Reject). It's **off
+unless you set `gmail_token_ssm_param`**. Because the box is headless, the OAuth token is
+minted locally and delivered via SSM.
+
+1. **Mint the token locally** (one-time) — see the repo's
+   `app/review_frontend/README.md` → "Email intake (Gmail)". You end up with
+   `gmail_token.json` (a portable refresh token; Workspace account = no 7-day expiry).
+
+2. **Store it as an SSM SecureString** (it's a secret — never in the code tarball):
+   ```bash
+   aws ssm put-parameter --region "$AWS_REGION" --type SecureString \
+     --name /grid-bff/gmail-token --value "file://$(pwd)/../../gmail_token.json"
+   ```
+
+3. **Apply with intake enabled:**
+   ```bash
+   cd infra/bff && terraform apply \
+     -var "region=$AWS_REGION" -var "runtime_arn=$AGENTCORE_RUNTIME_ARN" \
+     -var "s3_bucket=$GRID_S3_BUCKET" -var "s3_prefix=$GRID_S3_PREFIX" \
+     -var "gmail_intake_enabled=true" \
+     -var "gmail_token_ssm_param=/grid-bff/gmail-token" \
+     -var 'gmail_query=is:unread has:attachment subject:(grid application)'
+   ```
+   This grants the instance role `bedrock:InvokeModel` (Claude family) + read of the token
+   parameter, writes the intake env into `bff.env`, and fetches the token to
+   `/opt/grid-bff/gmail_token.json` on boot. The poller starts with the service.
+
+**Notes**
+- **Single process** — the systemd unit runs one `grid-local-api` (no `--workers`), so exactly
+  one poller polls the inbox. Idempotency is via Gmail labels.
+- **Durability** — pending/accepted bundles live on the instance's EBS volume. They survive
+  restart/stop-start but are **wiped on a code redeploy** (`user_data_replace_on_change`
+  replaces the instance). For durable state, back `review_seed/{pending,applications}` with
+  S3/EFS (separate follow-up).
+- **Token rotation** — re-mint locally, `put-parameter --overwrite`, then
+  `sudo systemctl restart grid-bff` (or re-apply to re-fetch on next boot).
+- **The portal SPA isn't served here** — only `/api/review/*`. Run `review_frontend` locally
+  pointed at the SSM tunnel (`:8000`), or serve the built SPA separately.
+
 ## Terraform
 
 ```bash

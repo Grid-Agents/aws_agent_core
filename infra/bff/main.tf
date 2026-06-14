@@ -37,6 +37,8 @@ data "aws_ssm_parameter" "al2023" {
   name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
 }
 
+data "aws_caller_identity" "current" {}
+
 # ----- IAM: instance role so the box needs NO static AWS keys -----
 data "aws_iam_policy_document" "assume" {
   statement {
@@ -83,6 +85,46 @@ data "aws_iam_policy_document" "bff" {
       test     = "StringLike"
       variable = "s3:prefix"
       values   = ["${var.s3_prefix}/*"]
+    }
+  }
+
+  # Email intake only: the extractor calls Claude on Bedrock directly (not via the
+  # AgentCore runtime), so the BFF needs InvokeModel on the Claude family. Scoped to
+  # the cross-region inference profile + the foundation models it routes to.
+  dynamic "statement" {
+    for_each = var.gmail_intake_enabled ? [1] : []
+    content {
+      sid     = "InvokeBedrockModel"
+      actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+      resources = [
+        "arn:aws:bedrock:*::foundation-model/anthropic.claude-*",
+        "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/us.anthropic.claude-*",
+      ]
+    }
+  }
+
+  # Email intake only: read the Gmail OAuth token from SSM Parameter Store on boot.
+  dynamic "statement" {
+    for_each = var.gmail_token_ssm_param != "" ? [1] : []
+    content {
+      sid       = "ReadGmailToken"
+      actions   = ["ssm:GetParameter"]
+      resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter${var.gmail_token_ssm_param}"]
+    }
+  }
+
+  # Decrypt the SecureString token (default aws/ssm KMS key), via SSM only.
+  dynamic "statement" {
+    for_each = var.gmail_token_ssm_param != "" ? [1] : []
+    content {
+      sid       = "DecryptGmailToken"
+      actions   = ["kms:Decrypt"]
+      resources = ["*"]
+      condition {
+        test     = "StringEquals"
+        variable = "kms:ViaService"
+        values   = ["ssm.${var.region}.amazonaws.com"]
+      }
     }
   }
 }
@@ -155,13 +197,16 @@ resource "aws_instance" "bff" {
 
   user_data_replace_on_change = true
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    region       = var.region
-    runtime_arn  = var.runtime_arn
-    s3_bucket    = var.s3_bucket
-    s3_prefix    = var.s3_prefix
-    model        = var.model
-    code_s3_uri  = "s3://${var.s3_bucket}/${aws_s3_object.code.key}"
-    bind_address = var.expose_public ? "0.0.0.0" : "127.0.0.1"
+    region                = var.region
+    runtime_arn           = var.runtime_arn
+    s3_bucket             = var.s3_bucket
+    s3_prefix             = var.s3_prefix
+    model                 = var.model
+    code_s3_uri           = "s3://${var.s3_bucket}/${aws_s3_object.code.key}"
+    bind_address          = var.expose_public ? "0.0.0.0" : "127.0.0.1"
+    gmail_intake_enabled  = var.gmail_intake_enabled
+    gmail_token_ssm_param = var.gmail_token_ssm_param
+    gmail_query           = var.gmail_query
   })
 
   tags = {

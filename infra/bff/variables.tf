@@ -44,3 +44,23 @@ variable "ingress_cidr" {
   type    = string
   default = "0.0.0.0/0"
 }
+
+# ----- Email intake (Gmail poller). Off unless gmail_token_ssm_param is set. -----
+
+variable "gmail_intake_enabled" {
+  type        = bool
+  default     = false
+  description = "Start the Gmail intake poller on the BFF. Requires gmail_token_ssm_param. When true, the BFF role is granted bedrock:InvokeModel (the extractor calls Claude on Bedrock directly) + read of the token SSM parameter."
+}
+
+variable "gmail_token_ssm_param" {
+  type        = string
+  default     = ""
+  description = "Name of the SSM Parameter Store SecureString holding the gmail_token.json contents (e.g. /grid-bff/gmail-token). Create it locally: aws ssm put-parameter --type SecureString --name <name> --value file://gmail_token.json. Leave empty to keep intake off."
+}
+
+variable "gmail_query" {
+  type        = string
+  default     = "is:unread has:attachment subject:(grid application)"
+  description = "Gmail search query the poller uses to find submissions. Scope this to your intake convention (a dedicated address, label, or subject) so it never sweeps existing mail."
+}
