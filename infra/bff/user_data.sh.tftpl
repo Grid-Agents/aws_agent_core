@@ -39,18 +39,12 @@ GRID_S3_PREFIX=${s3_prefix}
 GRID_ARTIFACT_DIR=/opt/grid-bff/artifacts
 GRID_LOCAL_API_PORT=8000
 GRID_GMAIL_INTAKE=%{ if gmail_intake_enabled }1%{ else }0%{ endif }
-GRID_GMAIL_TOKEN_FILE=/opt/grid-bff/gmail_token.json
+GRID_GMAIL_TOKEN_SSM_PARAM=${gmail_token_ssm_param}
 GRID_GMAIL_QUERY=${gmail_query}
 EOF
 mkdir -p /opt/grid-bff/artifacts
-
-# 5b) email intake: pull the Gmail OAuth token (SecureString) from SSM onto the box.
-# Minted locally (browser consent can't run headless); the refresh token is portable.
-%{ if gmail_intake_enabled ~}
-aws ssm get-parameter --name "${gmail_token_ssm_param}" --with-decryption \
-  --region "${region}" --query 'Parameter.Value' --output text > /opt/grid-bff/gmail_token.json
-chmod 600 /opt/grid-bff/gmail_token.json
-%{ endif ~}
+# Email intake reads the Gmail token from SSM at runtime (via the instance role),
+# so the secret stays in AWS and is never written to this box's disk.
 
 # 6) install deps (build extra gives fastapi/uvicorn; graphrag/torch NOT needed for the proxy)
 cd "$APP_DIR"

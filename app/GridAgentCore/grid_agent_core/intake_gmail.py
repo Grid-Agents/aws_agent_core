@@ -22,11 +22,37 @@ FAILED_LABEL = "GridIntake/Failed"
 _SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 
-def build_service():  # pragma: no cover - thin googleapiclient wrapper
+def _credentials():
+    """Load Gmail OAuth credentials from a local token file (dev) or SSM (EC2).
+
+    Prefers ``GRID_GMAIL_TOKEN_FILE`` when set (local dev); otherwise reads the
+    token JSON from the SSM SecureString named by ``GRID_GMAIL_TOKEN_SSM_PARAM``.
+    On EC2 the secret then stays in AWS and never lands on the instance disk; the
+    refresh token is long-lived and access tokens refresh in memory each run.
+    """
     from google.oauth2.credentials import Credentials
+
+    path = settings.gmail_token_file()
+    if path:
+        return Credentials.from_authorized_user_file(path, _SCOPES)
+
+    param = settings.gmail_token_ssm_param()
+    if param:
+        import json
+
+        import boto3
+
+        value = boto3.client("ssm", region_name=settings.aws_region()).get_parameter(
+            Name=param, WithDecryption=True)["Parameter"]["Value"]
+        return Credentials.from_authorized_user_info(json.loads(value), _SCOPES)
+
+    raise RuntimeError(
+        "no Gmail token source: set GRID_GMAIL_TOKEN_FILE or GRID_GMAIL_TOKEN_SSM_PARAM")
+
+
+def build_service():  # pragma: no cover - thin googleapiclient wrapper
     from googleapiclient.discovery import build
-    creds = Credentials.from_authorized_user_file(settings.gmail_token_file(), _SCOPES)
-    return build("gmail", "v1", credentials=creds, cache_discovery=False)
+    return build("gmail", "v1", credentials=_credentials(), cache_discovery=False)
 
 
 def _header(message: dict, name: str) -> str:
@@ -142,8 +168,10 @@ async def run_poller() -> None:  # pragma: no cover - background loop
 
 
 def start_intake_poller() -> asyncio.Task | None:  # pragma: no cover - wiring
-    if not settings.gmail_intake_enabled() or not settings.gmail_token_file():
-        log.info("Gmail intake disabled (set GRID_GMAIL_INTAKE=1 + GRID_GMAIL_TOKEN_FILE)")
+    has_token = settings.gmail_token_file() or settings.gmail_token_ssm_param()
+    if not settings.gmail_intake_enabled() or not has_token:
+        log.info("Gmail intake disabled (set GRID_GMAIL_INTAKE=1 + "
+                 "GRID_GMAIL_TOKEN_FILE or GRID_GMAIL_TOKEN_SSM_PARAM)")
         return None
     log.info("Gmail intake poller starting (every %ds)", settings.gmail_poll_seconds())
     return asyncio.create_task(run_poller())

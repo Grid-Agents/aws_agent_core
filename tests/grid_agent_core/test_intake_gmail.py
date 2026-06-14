@@ -81,3 +81,40 @@ def test_process_message_creates_pending_and_labels(tmp_path, monkeypatch):
     assert (store.PENDING_DIR / "msg-42" / "red_line.pdf").is_file()
     # message was labelled ingested (idempotency marker)
     assert gmail.labelled and gmail.labelled[0][0] == "msg-42"
+
+
+import json as _json
+
+import pytest
+
+from grid_agent_core import intake_gmail
+
+_TOKEN = {"refresh_token": "rt-123", "client_id": "cid", "client_secret": "sec",
+          "token_uri": "https://oauth2.googleapis.com/token"}
+
+
+def test_credentials_from_file(tmp_path, monkeypatch):
+    p = tmp_path / "tok.json"; p.write_text(_json.dumps(_TOKEN))
+    monkeypatch.setenv("GRID_GMAIL_TOKEN_FILE", str(p))
+    monkeypatch.delenv("GRID_GMAIL_TOKEN_SSM_PARAM", raising=False)
+    assert intake_gmail._credentials().refresh_token == "rt-123"
+
+
+def test_credentials_from_ssm(monkeypatch):
+    monkeypatch.delenv("GRID_GMAIL_TOKEN_FILE", raising=False)
+    monkeypatch.setenv("GRID_GMAIL_TOKEN_SSM_PARAM", "/grid-bff/gmail-token")
+
+    class FakeSSM:
+        def get_parameter(self, **kw):
+            assert kw["Name"] == "/grid-bff/gmail-token" and kw["WithDecryption"] is True
+            return {"Parameter": {"Value": _json.dumps(_TOKEN)}}
+
+    monkeypatch.setattr("boto3.client", lambda *a, **k: FakeSSM())
+    assert intake_gmail._credentials().refresh_token == "rt-123"
+
+
+def test_credentials_no_source_raises(monkeypatch):
+    monkeypatch.delenv("GRID_GMAIL_TOKEN_FILE", raising=False)
+    monkeypatch.delenv("GRID_GMAIL_TOKEN_SSM_PARAM", raising=False)
+    with pytest.raises(RuntimeError):
+        intake_gmail._credentials()

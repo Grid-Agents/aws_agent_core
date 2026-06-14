@@ -112,10 +112,12 @@ minted locally and delivered via SSM.
      -var 'gmail_query=is:unread has:attachment subject:(grid application)'
    ```
    This grants the instance role `bedrock:InvokeModel` (Claude family) + read of the token
-   parameter, writes the intake env into `bff.env`, and fetches the token to
-   `/opt/grid-bff/gmail_token.json` on boot. The poller starts with the service.
+   parameter and writes the intake env into `bff.env`. The poller starts with the service.
 
 **Notes**
+- **Token never on disk** — the app reads the token from SSM **at runtime** (via the instance
+  role), so the secret stays in AWS; it's not written to the box's filesystem. Locally,
+  `GRID_GMAIL_TOKEN_FILE` (a file) is used instead — `build_service` prefers the file when set.
 - **Single process** — the systemd unit runs one `grid-local-api` (no `--workers`), so exactly
   one poller polls the inbox. Idempotency is via Gmail labels.
 - **Durability** — pending/accepted bundles live on the instance's EBS volume. They survive
@@ -123,7 +125,7 @@ minted locally and delivered via SSM.
   replaces the instance). For durable state, back `review_seed/{pending,applications}` with
   S3/EFS (separate follow-up).
 - **Token rotation** — re-mint locally, `put-parameter --overwrite`, then
-  `sudo systemctl restart grid-bff` (or re-apply to re-fetch on next boot).
+  `sudo systemctl restart grid-bff` (the app re-reads from SSM on start — no re-apply needed).
 - **The portal SPA isn't served here** — only `/api/review/*`. Run `review_frontend` locally
   pointed at the SSM tunnel (`:8000`), or serve the built SPA separately.
 

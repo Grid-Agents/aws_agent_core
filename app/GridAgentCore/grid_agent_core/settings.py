@@ -79,6 +79,12 @@ def gmail_token_file() -> str:
     return os.getenv("GRID_GMAIL_TOKEN_FILE", "").strip()
 
 
+def gmail_token_ssm_param() -> str:
+    """SSM Parameter Store SecureString holding gmail_token.json (used on EC2 so the
+    token is read from AWS at runtime instead of being written to the instance disk)."""
+    return os.getenv("GRID_GMAIL_TOKEN_SSM_PARAM", "").strip()
+
+
 def gmail_query() -> str:
     return os.getenv("GRID_GMAIL_QUERY", "is:unread has:attachment").strip()
 
