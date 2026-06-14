@@ -13,6 +13,7 @@ export default defineConfig({
       "/api": { target: API, changeOrigin: true },
       "/artifacts": { target: API, changeOrigin: true },
       "/review-pdfs": { target: API, changeOrigin: true },
+      "/intake-pdfs": { target: API, changeOrigin: true },
     },
   },
 });
