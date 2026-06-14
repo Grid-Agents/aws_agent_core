@@ -90,6 +90,16 @@ def _slug(category: str, i: int) -> str:
     return base or f"s{i}"
 
 
+def _norm_cat(category: str) -> str:
+    """Normalise a category name for matching: case/dash/'&'/space-insensitive.
+
+    The model is non-deterministic about formatting ('Land - area' vs
+    'Land — area', '&' vs 'and', casing), so an exact-string join would
+    silently drop extracted answers. Reduce both sides to alphanumerics only.
+    """
+    return re.sub(r"[^a-z0-9]+", "", category.lower().replace("&", " and "))
+
+
 def extract_submission(attachments: list[dict], body: str,
                        model: ModelClient | None = None) -> dict[str, Any]:
     """attachments: [{'name': str, 'text': str}]. Returns a parse_submission-shaped
@@ -123,11 +133,12 @@ def extract_submission(attachments: list[dict], body: str,
                   f"EMAIL BODY:\n{body.strip() or '(empty)'}\n\nATTACHMENTS:\n{docs_blob}"),
         )
 
-        by_cat = {s["category"]: s for s in ext.get("sections", [])}
+        by_cat = {_norm_cat(s["category"]): s for s in ext.get("sections", [])
+                  if isinstance(s, dict) and s.get("category")}
         sections = []
         seen_ids: set[str] = set()
         for i, cat in enumerate(schema, start=1):
-            got = by_cat.get(cat["category"], {})
+            got = by_cat.get(_norm_cat(cat["category"]), {})
             sec_id = _slug(cat["category"], i)
             if sec_id in seen_ids:
                 n = 2

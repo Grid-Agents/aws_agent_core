@@ -73,3 +73,24 @@ def test_extract_marks_failure_on_unknown_classification():
     result = extract_submission([{"name": "a.pdf", "text": "x"}], body="", model=model)
     assert result["intake"]["status"] == "extraction_failed"
     assert result["sections"] == []
+
+
+def test_extract_matches_categories_despite_formatting_drift():
+    """The model is non-deterministic about category formatting; a present
+    answer must not be silently dropped over dash/case/'&' differences."""
+    model = FakeModel(
+        {"level": "transmission", "conn_type": "generation", "level_confidence": "high",
+         "name": "Driftfield", "applicant": "Drift Ltd", "capacity": "100 MW"},
+        {"sections": [
+            # schema is 'Site & location' / 'Land — area' — model returns drifted forms
+            {"category": "site and location", "submitted": "At the moor.",
+             "docs": [], "confidence": "high"},
+            {"category": "Land - area", "submitted": "310 ha red line.",
+             "docs": [], "confidence": "medium"},
+         ], "flags": [], "unmapped_docs": []},
+    )
+    result = extract_submission([{"name": "a.pdf", "text": "x"}], body="", model=model)
+    site = next(s for s in result["sections"] if s["title"] == "Site & location")
+    land = next(s for s in result["sections"] if s["title"] == "Land — area")
+    assert site["submitted"] == "At the moor."          # matched despite '&'/case
+    assert land["submitted"] == "310 ha red line."      # matched despite '-' vs '—'
